@@ -125,10 +125,11 @@ export class ApiStack extends Stack {
       const baseProps: nodejs.NodejsFunctionProps = {
         functionName: `MercadoExpress-${stage}-${l.functionName}`,
         runtime: lambda.Runtime.NODEJS_20_X,
-        // PR 1 placeholder entry: the real entry is wired by PR 2a. The
-        // `/dev/null` path is a stub so the construct compiles. CDK only
-        // requires `entry` at synth time, not deploy time.
-        entry: `${__dirname}/placeholder-entry.ts`,
+        // PR 1 placeholder entry: the real entry is wired by PR 2a.
+        // The `./placeholder-entry.ts` path is a stub so the construct
+        // compiles. CDK only requires `entry` at synth time, not deploy
+        // time.
+        entry: `./placeholder-entry.ts`,
         handler: 'handler',
         ...(logGroup ? { logGroup } : {}),
         memorySize: 512,

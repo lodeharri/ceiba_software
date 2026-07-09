@@ -12,9 +12,8 @@
  * workspace smoke test happy (`@mercadoexpress/infra` is importable).
  */
 
-import 'source-map-support/register';
 import { App, type StackProps } from 'aws-cdk-lib';
-import { resolveStage, type Stage } from './config.js';
+import { resolveStage, type Stage, infraConfig } from './config.js';
 import { DatabaseStack } from './stacks/DatabaseStack.js';
 import { FrontendStack } from './stacks/FrontendStack.js';
 import { ApiStack } from './stacks/ApiStack.js';
@@ -34,18 +33,33 @@ export interface StageStacks {
  * construct a stage's graph without spinning up the CDK App.
  */
 export function createStageStacks(app: App, stage: Stage, props?: StackProps): StageStacks {
-  const database = new DatabaseStack(app, `MercadoExpress-${stage}-Database`, { stage, ...props });
+  // Synthesizing the DatabaseStack requires account + region for the VPC
+  // lookup. We pull them from context (cdk.json or -c flags) and fall
+  // back to a deterministic placeholder so `cdk synth` works locally
+  // without AWS credentials.
+  const env = props?.env ?? {
+    account: app.node.tryGetContext('aws:cdk:env-account') ?? '000000000000',
+    region: app.node.tryGetContext('aws:cdk:env-region') ?? infraConfig.region,
+  };
+  const stackProps: StackProps = { env, ...props };
+  const database = new DatabaseStack(app, `MercadoExpress-${stage}-Database`, {
+    stage,
+    ...stackProps,
+  });
 
   // FrontendStack must be created before ApiStack because ApiStack reads
   // FrontendStack.distributionDomainName at synth time.
-  const frontend = new FrontendStack(app, `MercadoExpress-${stage}-Frontend`, { stage, ...props });
+  const frontend = new FrontendStack(app, `MercadoExpress-${stage}-Frontend`, {
+    stage,
+    ...stackProps,
+  });
 
   const api = new ApiStack(app, `MercadoExpress-${stage}-Api`, {
     stage,
     distributionDomainName: frontend.distributionDomainName,
     databaseUrlSecretArn: database.databaseUrlSecretArn,
     securityGroupId: database.securityGroupId,
-    ...props,
+    ...stackProps,
   });
 
   const observability = new ObservabilityStack(app, `MercadoExpress-${stage}-Observability`, {
@@ -57,7 +71,7 @@ export function createStageStacks(app: App, stage: Stage, props?: StackProps): S
       'alerts-lambda',
       'orders-lambda',
     ],
-    ...props,
+    ...stackProps,
   });
 
   // Sequencing: database must exist before api (FNS read DATABASE_URL);
