@@ -84,6 +84,9 @@ importers:
         specifier: ^3.23.8
         version: 3.25.76
     devDependencies:
+      '@types/aws-lambda':
+        specifier: ^8.10.162
+        version: 8.10.162
       '@types/bcrypt':
         specifier: ^5.0.2
         version: 5.0.2
@@ -170,6 +173,9 @@ importers:
         specifier: ^10.4.0
         version: 10.6.0
     devDependencies:
+      '@types/aws-lambda':
+        specifier: ^8.10.162
+        version: 8.10.162
       '@types/node':
         specifier: ^20.14.0
         version: 20.19.43
@@ -909,6 +915,9 @@ packages:
     resolution: {integrity: sha512-BfzEnDJOt9T8M989/lA37EcJgat01wLRnoi5dQf3QzOH7jzpqTAzdDbVfRljVr5r+jzKqpbHeyOfAaXxAd0PAA==}
     cpu: [x64]
     os: [win32]
+
+  '@types/aws-lambda@8.10.162':
+    resolution: {integrity: sha512-Fn658grtLOci1oxi1391vvDWJRKNGWRSqfxRkmN/Iy3c0tQH1USMKEXcPYHLvope+ZgTFocx9FRQJx1muBL6qw==}
 
   '@types/bcrypt@5.0.2':
     resolution: {integrity: sha512-6atioO8Y75fNcbmj0G7UjI9lXN2pQ/IGJ2FWT4a/btd0Lk9lQalHLKhkgKVZ3r+spnmWUKfbMi1GEe9wyHQfNQ==}
@@ -3601,6 +3610,8 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.62.2':
     optional: true
+
+  '@types/aws-lambda@8.10.162': {}
 
   '@types/bcrypt@5.0.2':
     dependencies:
