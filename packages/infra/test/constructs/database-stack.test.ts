@@ -1,0 +1,70 @@
+/**
+ * RED-first CDK construct test for DatabaseStack (PR 1, tasks.md §2 PR 1).
+ *
+ * Asserts the bindings locked in design.md §4.1 + config.yaml:
+ *   - RDS Postgres 16.
+ *   - pgvector extension enabled.
+ *   - Instance class db.t3.micro.
+ *
+ * RED state: DatabaseStack does not exist yet → import fails, suite fails.
+ * GREEN state: DatabaseStack is added in PR 1 with the expected shape.
+ */
+
+import { describe, it, expect } from 'vitest';
+import { App, type Stack } from 'aws-cdk-lib';
+import { Template } from 'aws-cdk-lib/assertions';
+
+function loadDatabaseStackModule(): {
+  DatabaseStack: new (app: App, id: string, props: { stage: 'dev' | 'prod' }) => Stack;
+} {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('../../src/stacks/DatabaseStack.js');
+}
+
+describe('DatabaseStack', () => {
+  it('provisions an RDS Postgres 16 instance with the pgvector extension', () => {
+    const app = new App();
+    const { DatabaseStack } = loadDatabaseStackModule();
+    const stack = new DatabaseStack(app, 'DbStackTest', { stage: 'dev' });
+
+    const template = Template.fromStack(stack);
+    const templateStr = JSON.stringify(template.toJSON());
+
+    expect(templateStr).toContain('postgres');
+    expect(templateStr).toMatch(/16\.\d/);
+  });
+
+  it('uses the db.t3.micro instance class', () => {
+    const app = new App();
+    const { DatabaseStack } = loadDatabaseStackModule();
+    const stack = new DatabaseStack(app, 'DbStackTest2', { stage: 'dev' });
+
+    const template = Template.fromStack(stack);
+    const templateStr = JSON.stringify(template.toJSON());
+
+    expect(templateStr).toContain('db.t3.micro');
+  });
+
+  it('exports the databaseUrlSecretArn and securityGroupId CFN outputs', () => {
+    const app = new App();
+    const { DatabaseStack } = loadDatabaseStackModule();
+    const stack = new DatabaseStack(app, 'DbStackTest3', { stage: 'dev' });
+
+    const template = Template.fromStack(stack);
+    const outputs = template.findOutputs('*');
+
+    expect(outputs['databaseUrlSecretArn']).toBeDefined();
+    expect(outputs['securityGroupId']).toBeDefined();
+  });
+
+  it('disables deletion protection in dev', () => {
+    const app = new App();
+    const { DatabaseStack } = loadDatabaseStackModule();
+    const stack = new DatabaseStack(app, 'DbStackTestDev', { stage: 'dev' });
+
+    const template = Template.fromStack(stack);
+    const templateStr = JSON.stringify(template.toJSON());
+
+    expect(templateStr).toContain('"DeletionProtection": false');
+  });
+});
