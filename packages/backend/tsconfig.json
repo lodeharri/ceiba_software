@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "types": ["node", "vitest/globals"],
+    "paths": {
+      "@mercadoexpress/shared": ["../shared/src/index.ts"],
+      "@mercadoexpress/shared/*": ["../shared/src/*"]
+    }
+  },
+  "include": ["src/**/*", "test/**/*"],
+  "references": [{ "path": "../shared" }]
+}

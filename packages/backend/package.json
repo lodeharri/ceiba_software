@@ -1,0 +1,34 @@
+{
+  "name": "@mercadoexpress/backend",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Lambda handlers for the MercadoExpress backend (no Express/Fastify/NestJS).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "vitest run --watch",
+    "db:migrate": "prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@asteasolutions/zod-to-openapi": "^7.1.1",
+    "@mercadoexpress/shared": "workspace:*",
+    "@prisma/client": "^5.20.0",
+    "bcrypt": "^5.1.1",
+    "jose": "^5.9.2",
+    "pino": "^9.4.0",
+    "prisma": "^5.20.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/node": "^20.14.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2",
+    "vitest": "^2.1.1"
+  }
+}
