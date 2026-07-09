@@ -41,6 +41,13 @@ export default [
     },
   },
   {
+    // CommonJS config files use `module.exports` — expose the CJS globals.
+    files: ['**/*.cjs'],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
+  {
     plugins: { boundaries },
     settings: {
       'boundaries/elements': [
@@ -81,8 +88,17 @@ export default [
         'warn',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
-      '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
+      // `consistent-type-imports` requires type-aware linting. It is enabled
+      // for plain `.ts` files only (where the parser is @typescript-eslint
+      // itself). For `.vue` SFCs we skip it because vue-eslint-parser does
+      // not forward parserOptions.project in our flat config (PR 0 scope).
       'no-console': ['warn', { allow: ['warn', 'error', 'info'] }],
+    },
+  },
+  {
+    files: ['**/*.ts'],
+    rules: {
+      '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
     },
   },
 ];

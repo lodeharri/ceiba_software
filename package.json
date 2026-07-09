@@ -2,6 +2,7 @@
   "name": "mercadoexpress",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "description": "Inventory management system for a retail chain. Monorepo root.",
   "packageManager": "pnpm@9.15.4",
   "engines": {
