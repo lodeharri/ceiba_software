@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "jsx": "preserve",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": false,
+    "types": ["node", "vitest/globals"],
+    "paths": {
+      "@/*": ["src/*"],
+      "@mercadoexpress/shared": ["../shared/src/index.ts"],
+      "@mercadoexpress/shared/*": ["../shared/src/*"]
+    }
+  },
+  "include": ["src/**/*", "src/**/*.vue", "test/**/*"],
+  "references": [
+    { "path": "./tsconfig.node.json" },
+    { "path": "../shared" }
+  ]
+}

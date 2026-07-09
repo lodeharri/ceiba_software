@@ -1,0 +1,6 @@
+/**
+ * Tailwind entry. Tokens (oklch CSS variables) land in PR 3 per design.md §8.2.
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
