@@ -16,7 +16,6 @@
     "deploy:dev": "cdk deploy -c stage=dev --require-approval never"
   },
   "dependencies": {
-    "@aws-cdk/aws-lambda-nodejs": "^2.155.0",
     "aws-cdk-lib": "^2.155.0",
     "constructs": "^10.4.0"
   },

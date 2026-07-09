@@ -3,6 +3,7 @@
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "dist",
+    "baseUrl": ".",
     "jsx": "preserve",
     "useDefineForClassFields": true,
     "module": "ESNext",
@@ -16,8 +17,5 @@
     }
   },
   "include": ["src/**/*", "src/**/*.vue", "test/**/*"],
-  "references": [
-    { "path": "./tsconfig.node.json" },
-    { "path": "../shared" }
-  ]
+  "references": [{ "path": "./tsconfig.node.json" }, { "path": "../shared" }]
 }

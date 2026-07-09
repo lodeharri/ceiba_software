@@ -12,7 +12,5 @@ module.exports = {
     'body-max-line-length': [2, 'always', 100],
     'footer-max-line-length': [2, 'always', 100],
   },
-  ignores: [
-    (commitMessage) => /Co-authored-by:\s*(?!Harri)/i.test(commitMessage),
-  ],
+  ignores: [(commitMessage) => /Co-authored-by:\s*(?!Harri)/i.test(commitMessage)],
 };

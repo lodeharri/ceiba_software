@@ -13,9 +13,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@mercadoexpress/shared': fileURLToPath(
-        new URL('../shared/src/index.ts', import.meta.url),
-      ),
+      '@mercadoexpress/shared': fileURLToPath(new URL('../shared/src/index.ts', import.meta.url)),
     },
   },
 });

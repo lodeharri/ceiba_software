@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Inventory management system for a retail chain. Monorepo root.",
-  "packageManager": "pnpm@>=9",
+  "packageManager": "pnpm@9.15.4",
   "engines": {
     "node": ">=20",
     "pnpm": ">=9"
@@ -11,7 +11,7 @@
   "scripts": {
     "test": "pnpm -r --workspace-concurrency=1 test",
     "test:watch": "pnpm -r --workspace-concurrency=1 test:watch",
-    "type-check": "pnpm -r tsc --noEmit",
+    "type-check": "pnpm -r --workspace-concurrency=1 tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",

@@ -30,8 +30,6 @@ export const ErrorCode = {
   TIMEOUT: 'TIMEOUT',
 } as const;
 
-export const errorCodeSchema = z.enum(
-  Object.values(ErrorCode) as [string, ...string[]],
-);
+export const errorCodeSchema = z.enum(Object.values(ErrorCode) as [string, ...string[]]);
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

@@ -5,11 +5,6 @@ import { z } from 'zod';
  *   PENDIENTE → APROBADA → RECIBIDA
  *   PENDIENTE → RECHAZADA
  */
-export const orderStatusSchema = z.enum([
-  'PENDIENTE',
-  'APROBADA',
-  'RECHAZADA',
-  'RECIBIDA',
-]);
+export const orderStatusSchema = z.enum(['PENDIENTE', 'APROBADA', 'RECHAZADA', 'RECIBIDA']);
 
 export type OrderStatus = z.infer<typeof orderStatusSchema>;

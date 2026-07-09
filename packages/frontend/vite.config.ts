@@ -7,9 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
-      '@mercadoexpress/shared': fileURLToPath(
-        new URL('../shared/src/index.ts', import.meta.url),
-      ),
+      '@mercadoexpress/shared': fileURLToPath(new URL('../shared/src/index.ts', import.meta.url)),
     },
   },
   server: {
