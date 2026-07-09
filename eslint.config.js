@@ -31,6 +31,16 @@ export default [
   ...tseslint.configs.recommended,
   ...vuePlugin.configs['flat/recommended'],
   {
+    files: ['**/*.vue'],
+    rules: {
+      // The vue/recommended rule wants `<h1>` content on its own line, which
+      // fights prettier's `<h1 class="...">text</h1>` formatting. Turn it off
+      // for PR 0's stub App.vue; PR 3 may revisit when the visual direction
+      // is in.
+      'vue/singleline-html-element-content-newline': 'off',
+    },
+  },
+  {
     files: ['**/*.{test,spec}.ts'],
     plugins: { vitest: vitestPlugin },
     languageOptions: {

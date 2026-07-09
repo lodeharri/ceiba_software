@@ -47,26 +47,26 @@ Five PR-shaped work units, ordered by dependency. Each has a clear start, finish
 
 **Tasks checklist** (atomic; each is one commit or one short commit group):
 
-- [ ] Initialize root `package.json` with `"private": true`, `"packageManager": "pnpm@>=9"`, and `engines.node = ">=20"`.
-- [ ] Create `pnpm-workspace.yaml` listing `packages/*` (`backend`, `frontend`, `infra`, `shared`).
-- [ ] Create `tsconfig.base.json` with `strict: true`, `noUncheckedIndexedAccess: true`, `exactOptionalPropertyTypes: true`, project-references skeleton, no `any` escape hatches.
-- [ ] Create `packages/shared/{package.json,tsconfig.json,src/index.ts}` skeleton; declare `@asteasolutions/zod-to-openapi` dependency.
-- [ ] Create `packages/backend/{package.json,tsconfig.json,vitest.config.ts,tsconfig.build.json}` skeleton; declare `prisma`, `@prisma/client`, `jose`, `bcrypt`, `pino`, `zod`, `@asteasolutions/zod-to-openapi`.
-- [ ] Create `packages/frontend/{package.json,vite.config.ts,tsconfig.json,tsconfig.node.json,tailwind.config.ts,postcss.config.cjs,index.html,src/main.ts}` skeleton; declare `vue@3`, `vue-router@4`, `pinia`, `vue-i18n@9`, `ofetch`, `tailwindcss`, `vitest`, `@vue/test-utils`, `@axe-core/playwright`.
-- [ ] Create `packages/infra/{package.json,tsconfig.json,cdk.json}` skeleton; declare `aws-cdk-lib`, `constructs`, `@aws-cdk/aws-lambda-nodejs`, `vitest`, `aws-cdk-lib/assertions`.
-- [ ] Add root `.editorconfig`, `.nvmrc` (`20`), `.gitignore` (ignores `node_modules`, `dist`, `.env`, `cdk.out`, `coverage`, `*.tsbuildinfo`).
-- [ ] Add root `.env.example` plus per-package `.env.example` files with: `DATABASE_URL`, `JWT_SECRET`, `JWT_SECRET_PREVIOUS`, `JWT_OVERLAP_SECONDS`, `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `OLLAMA_HOST`, `GROQ_API_KEY`, `OPENAI_API_KEY`, `OIDC_ROLE_ARN`, `TRUSTED_PROXY_DEPTH`, `VITE_API_BASE_URL`, `STAGE`, `AWS_REGION`.
-- [ ] Add ESLint flat config (`eslint.config.js`) at root with `eslint-plugin-boundaries`, `@typescript-eslint`, `vue`, `vitest`, and a barrier rule: `packages/*/src/*/domain/**` may not import from `infrastructure/**`, `interface/**`, or any provider package (`*sdk*`, `*provider*`).
-- [ ] Add Prettier config (`.prettierrc.json`) and `.prettierignore` (skip `dist`, `coverage`, `cdk.out`, `*.generated.ts`).
-- [ ] Add Husky pre-commit hook (`.husky/pre-commit` → `pnpm lint-staged`) and `commitlint` config (`commitlint.config.cjs`) with the `conventional-commits` rule.
-- [ ] Add `.lintstagedrc.json` running `eslint --fix` + `prettier --write` on staged `*.{ts,vue,json,md,yaml,yml}`.
-- [ ] **RED-first:** add `packages/shared/test/scaffolds-green.test.ts` that asserts each workspace package exists, has a valid `package.json`, and a `tsconfig.json` that extends `tsconfig.base.json`.
-- [ ] **GREEN:** make the test pass by ensuring the package skeletons from the previous tasks are consistent.
-- [ ] **RED-first:** add `packages/backend/test/tsc-no-emit.test.ts` that shells out to `pnpm --filter backend exec tsc --noEmit` and asserts exit 0.
-- [ ] **RED-first:** add `packages/frontend/test/vite-build.test.ts` that shells out to `pnpm --filter frontend exec vite build --mode test` and asserts exit 0 (uses a stub `App.vue`).
-- [ ] Add `pnpm-workspace.yaml` `onlyBuiltDependencies` allow-list (for `bcrypt`, `esbuild`, `prisma`).
-- [ ] Add root `README.md` with: project description, link to `porject.md`, pnpm setup, scripts (`pnpm -w vitest run`, `pnpm -w tsc --noEmit`, `pnpm -w eslint .`, `pnpm -w playwright test`), and a "Stack & locked decisions" section pointing to `openspec/config.yaml`.
-- [ ] Add `pnpm-workspace.yaml` script aliases: `test`, `test:watch`, `type-check`, `lint`, `format`, `db:migrate`, `db:seed`, `dev:backend`, `dev:frontend`.
+- [x] Initialize root `package.json` with `"private": true`, `"packageManager": "pnpm@>=9"`, and `engines.node = ">=20"`.
+- [x] Create `pnpm-workspace.yaml` listing `packages/*` (`backend`, `frontend`, `infra`, `shared`).
+- [x] Create `tsconfig.base.json` with `strict: true`, `noUncheckedIndexedAccess: true`, `exactOptionalPropertyTypes: true`, project-references skeleton, no `any` escape hatches.
+- [x] Create `packages/shared/{package.json,tsconfig.json,src/index.ts}` skeleton; declare `@asteasolutions/zod-to-openapi` dependency.
+- [x] Create `packages/backend/{package.json,tsconfig.json,vitest.config.ts,tsconfig.build.json}` skeleton; declare `prisma`, `@prisma/client`, `jose`, `bcrypt`, `pino`, `zod`, `@asteasolutions/zod-to-openapi`.
+- [x] Create `packages/frontend/{package.json,vite.config.ts,tsconfig.json,tsconfig.node.json,tailwind.config.ts,postcss.config.cjs,index.html,src/main.ts}` skeleton; declare `vue@3`, `vue-router@4`, `pinia`, `vue-i18n@9`, `ofetch`, `tailwindcss`, `vitest`, `@vue/test-utils`, `@axe-core/playwright`.
+- [x] Create `packages/infra/{package.json,tsconfig.json,cdk.json}` skeleton; declare `aws-cdk-lib`, `constructs`, `@aws-cdk/aws-lambda-nodejs`, `vitest`, `aws-cdk-lib/assertions`.
+- [x] Add root `.editorconfig`, `.nvmrc` (`20`), `.gitignore` (ignores `node_modules`, `dist`, `.env`, `cdk.out`, `coverage`, `*.tsbuildinfo`).
+- [x] Add root `.env.example` plus per-package `.env.example` files with: `DATABASE_URL`, `JWT_SECRET`, `JWT_SECRET_PREVIOUS`, `JWT_OVERLAP_SECONDS`, `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `OLLAMA_HOST`, `GROQ_API_KEY`, `OPENAI_API_KEY`, `OIDC_ROLE_ARN`, `TRUSTED_PROXY_DEPTH`, `VITE_API_BASE_URL`, `STAGE`, `AWS_REGION`.
+- [x] Add ESLint flat config (`eslint.config.js`) at root with `eslint-plugin-boundaries`, `@typescript-eslint`, `vue`, `vitest`, and a barrier rule: `packages/*/src/*/domain/**` may not import from `infrastructure/**`, `interface/**`, or any provider package (`*sdk*`, `*provider*`).
+- [x] Add Prettier config (`.prettierrc.json`) and `.prettierignore` (skip `dist`, `coverage`, `cdk.out`, `*.generated.ts`).
+- [x] Add Husky pre-commit hook (`.husky/pre-commit` → `pnpm lint-staged`) and `commitlint` config (`commitlint.config.cjs`) with the `conventional-commits` rule.
+- [x] Add `.lintstagedrc.json` running `eslint --fix` + `prettier --write` on staged `*.{ts,vue,json,md,yaml,yml}`.
+- [x] **RED-first:** add `packages/shared/test/scaffolds-green.test.ts` that asserts each workspace package exists, has a valid `package.json`, and a `tsconfig.json` that extends `tsconfig.base.json`.
+- [x] **GREEN:** make the test pass by ensuring the package skeletons from the previous tasks are consistent.
+- [x] **RED-first:** add `packages/backend/test/tsc-no-emit.test.ts` that shells out to `pnpm --filter backend exec tsc --noEmit` and asserts exit 0.
+- [x] **RED-first:** add `packages/frontend/test/vite-build.test.ts` that shells out to `pnpm --filter frontend exec vite build --mode test` and asserts exit 0 (uses a stub `App.vue`).
+- [x] Add `pnpm-workspace.yaml` `onlyBuiltDependencies` allow-list (for `bcrypt`, `esbuild`, `prisma`).
+- [x] Add root `README.md` with: project description, link to `porject.md`, pnpm setup, scripts (`pnpm -w vitest run`, `pnpm -w tsc --noEmit`, `pnpm -w eslint .`, `pnpm -w playwright test`), and a "Stack & locked decisions" section pointing to `openspec/config.yaml`.
+- [x] Add `pnpm-workspace.yaml` script aliases: `test`, `test:watch`, `type-check`, `lint`, `format`, `db:migrate`, `db:seed`, `dev:backend`, `dev:frontend`.
 
 **Work-unit commits** (for commit hygiene, one commit per bullet group above):
 
