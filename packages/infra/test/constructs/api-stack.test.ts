@@ -20,13 +20,20 @@ function loadApiStackModule(): {
   ApiStack: new (
     app: App,
     id: string,
-    props: { stage: 'dev' | 'prod'; distributionDomainName: string },
+    props: {
+      stage: 'dev' | 'prod';
+      distributionDomainName: string;
+      databaseUrlSecretArn?: string;
+      securityGroupId?: string;
+      env?: { account: string; region: string };
+    },
   ) => Stack;
 } {
-  // Synchronous require keeps the RED state readable (missing module → throws).
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require('../../src/stacks/ApiStack.js');
+  return require('../../dist/src/stacks/ApiStack.js');
 }
+
+const PLACEHOLDER_ENV = { account: '000000000000', region: 'us-east-1' };
 
 describe('ApiStack', () => {
   it('exposes an HttpApi with the CORS preflight block (RISK-002)', () => {
@@ -35,6 +42,9 @@ describe('ApiStack', () => {
     const stack = new ApiStack(app, 'ApiStackTest', {
       stage: 'dev',
       distributionDomainName: 'd111111abcdef8.cloudfront.net',
+      databaseUrlSecretArn: 'arn:aws:ssm:us-east-1:000000000000:parameter/db',
+      securityGroupId: 'sg-00000000',
+      env: PLACEHOLDER_ENV,
     });
 
     const template = Template.fromStack(stack as unknown as Stack);
@@ -47,7 +57,7 @@ describe('ApiStack', () => {
     expect(templateStr).toContain('X-Request-Id');
     expect(templateStr).toContain('Idempotency-Key');
     expect(templateStr).toContain('d111111abcdef8.cloudfront.net');
-    expect(templateStr).toContain('OPTIONS');
+    expect(templateStr).toMatch(/"OPTIONS"/);
   });
 
   it('provisions 5 NodejsFunction placeholders (one per BC)', () => {
@@ -56,6 +66,9 @@ describe('ApiStack', () => {
     const stack = new ApiStack(app, 'ApiStackTest2', {
       stage: 'dev',
       distributionDomainName: 'd111111abcdef8.cloudfront.net',
+      databaseUrlSecretArn: 'arn:aws:ssm:us-east-1:000000000000:parameter/db',
+      securityGroupId: 'sg-00000000',
+      env: PLACEHOLDER_ENV,
     });
 
     const template = Template.fromStack(stack as unknown as Stack);
@@ -74,12 +87,15 @@ describe('ApiStack', () => {
     const stack = new ApiStack(app, 'ApiStackTestDev', {
       stage: 'dev',
       distributionDomainName: 'd111111abcdef8.cloudfront.net',
+      databaseUrlSecretArn: 'arn:aws:ssm:us-east-1:000000000000:parameter/db',
+      securityGroupId: 'sg-00000000',
+      env: PLACEHOLDER_ENV,
     });
 
     const template = Template.fromStack(stack as unknown as Stack);
     const templateStr = JSON.stringify(template.toJSON());
 
-    expect(templateStr).toContain('"ReservedConcurrentExecutions": 1');
+    expect(templateStr).toMatch(/"ReservedConcurrentExecutions":1/);
   });
 
   it('does NOT set reserved concurrency in prod (default)', () => {
@@ -88,12 +104,15 @@ describe('ApiStack', () => {
     const stack = new ApiStack(app, 'ApiStackTestProd', {
       stage: 'prod',
       distributionDomainName: 'd222222abcdef8.cloudfront.net',
+      databaseUrlSecretArn: 'arn:aws:ssm:us-east-1:000000000000:parameter/db',
+      securityGroupId: 'sg-00000000',
+      env: PLACEHOLDER_ENV,
     });
 
     const template = Template.fromStack(stack as unknown as Stack);
     const templateStr = JSON.stringify(template.toJSON());
 
-    expect(templateStr).not.toContain('"ReservedConcurrentExecutions": 1');
+    expect(templateStr).not.toMatch(/"ReservedConcurrentExecutions":1/);
   });
 
   it('creates 5 CloudWatch log groups with 7-day retention (ADR-7)', () => {
@@ -102,6 +121,9 @@ describe('ApiStack', () => {
     const stack = new ApiStack(app, 'ApiStackTestLogs', {
       stage: 'dev',
       distributionDomainName: 'd111111abcdef8.cloudfront.net',
+      databaseUrlSecretArn: 'arn:aws:ssm:us-east-1:000000000000:parameter/db',
+      securityGroupId: 'sg-00000000',
+      env: PLACEHOLDER_ENV,
     });
 
     const template = Template.fromStack(stack as unknown as Stack);
@@ -109,6 +131,6 @@ describe('ApiStack', () => {
 
     const matches = templateStr.match(/"AWS::Logs::LogGroup"/g) ?? [];
     expect(matches.length).toBeGreaterThanOrEqual(5);
-    expect(templateStr).toContain('"RetentionInDays": 7');
+    expect(templateStr).toMatch(/"RetentionInDays":7/);
   });
 });

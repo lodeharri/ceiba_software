@@ -26,7 +26,26 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { type Stage, infraConfig } from '../config.js';
+
+/**
+ * Resolves the absolute path of the placeholder entry file at synth time.
+ * PR 2a replaces the placeholder with the real per-BC handler.
+ *
+ * The placeholder lives at the package root (`packages/infra/placeholder-
+ * entry.ts`). We resolve relative to this file's location at compile time,
+ * not to `process.cwd()`, because `cdk synth` may run from any directory
+ * (vitest from the repo root, CDK CLI from packages/infra/).
+ */
+function placeholderEntryPath(): string {
+  // `import.meta.url` resolves to this file at runtime; the compiled
+  // artifact lives at `dist/src/stacks/ApiStack.js`, so three levels up
+  // (out of dist/, out of src/, out of stacks/) is the package root.
+  const here = fileURLToPath(import.meta.url);
+  return path.resolve(path.dirname(here), '..', '..', '..', 'placeholder-entry.ts');
+}
 
 export interface ApiStackProps extends StackProps {
   stage: Stage;
@@ -126,10 +145,11 @@ export class ApiStack extends Stack {
         functionName: `MercadoExpress-${stage}-${l.functionName}`,
         runtime: lambda.Runtime.NODEJS_20_X,
         // PR 1 placeholder entry: the real entry is wired by PR 2a.
-        // The `./placeholder-entry.ts` path is a stub so the construct
-        // compiles. CDK only requires `entry` at synth time, not deploy
-        // time.
-        entry: `./placeholder-entry.ts`,
+        // The path is resolved relative to the CDK app's working
+        // directory (packages/infra/), where `placeholder-entry.ts`
+        // lives at the package root. The file is gitignored under the
+        // build artifact category (it's a working stub).
+        entry: placeholderEntryPath(),
         handler: 'handler',
         ...(logGroup ? { logGroup } : {}),
         memorySize: 512,

@@ -15,29 +15,37 @@ import { App, type Stack } from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
 
 function loadDatabaseStackModule(): {
-  DatabaseStack: new (app: App, id: string, props: { stage: 'dev' | 'prod' }) => Stack;
+  DatabaseStack: new (
+    app: App,
+    id: string,
+    props: { stage: 'dev' | 'prod'; env?: { account: string; region: string } },
+  ) => Stack;
 } {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require('../../src/stacks/DatabaseStack.js');
+  return require('../../dist/src/stacks/DatabaseStack.js');
 }
+
+// DatabaseStack uses Vpc.fromLookup, which requires env. We pass a fixed
+// placeholder env so the tests can synthesize locally without AWS credentials.
+const PLACEHOLDER_ENV = { account: '000000000000', region: 'us-east-1' };
 
 describe('DatabaseStack', () => {
   it('provisions an RDS Postgres 16 instance with the pgvector extension', () => {
     const app = new App();
     const { DatabaseStack } = loadDatabaseStackModule();
-    const stack = new DatabaseStack(app, 'DbStackTest', { stage: 'dev' });
+    const stack = new DatabaseStack(app, 'DbStackTest', { stage: 'dev', env: PLACEHOLDER_ENV });
 
     const template = Template.fromStack(stack);
     const templateStr = JSON.stringify(template.toJSON());
 
     expect(templateStr).toContain('postgres');
-    expect(templateStr).toMatch(/16\.\d/);
+    expect(templateStr).toMatch(/"EngineVersion":"16(\.\d+)?"/);
   });
 
   it('uses the db.t3.micro instance class', () => {
     const app = new App();
     const { DatabaseStack } = loadDatabaseStackModule();
-    const stack = new DatabaseStack(app, 'DbStackTest2', { stage: 'dev' });
+    const stack = new DatabaseStack(app, 'DbStackTest2', { stage: 'dev', env: PLACEHOLDER_ENV });
 
     const template = Template.fromStack(stack);
     const templateStr = JSON.stringify(template.toJSON());
@@ -48,23 +56,23 @@ describe('DatabaseStack', () => {
   it('exports the databaseUrlSecretArn and securityGroupId CFN outputs', () => {
     const app = new App();
     const { DatabaseStack } = loadDatabaseStackModule();
-    const stack = new DatabaseStack(app, 'DbStackTest3', { stage: 'dev' });
+    const stack = new DatabaseStack(app, 'DbStackTest3', { stage: 'dev', env: PLACEHOLDER_ENV });
 
     const template = Template.fromStack(stack);
     const outputs = template.findOutputs('*');
 
-    expect(outputs['databaseUrlSecretArn']).toBeDefined();
-    expect(outputs['securityGroupId']).toBeDefined();
+    expect(outputs['DatabaseUrlSecretArn']).toBeDefined();
+    expect(outputs['SecurityGroupId']).toBeDefined();
   });
 
   it('disables deletion protection in dev', () => {
     const app = new App();
     const { DatabaseStack } = loadDatabaseStackModule();
-    const stack = new DatabaseStack(app, 'DbStackTestDev', { stage: 'dev' });
+    const stack = new DatabaseStack(app, 'DbStackTestDev', { stage: 'dev', env: PLACEHOLDER_ENV });
 
     const template = Template.fromStack(stack);
     const templateStr = JSON.stringify(template.toJSON());
 
-    expect(templateStr).toContain('"DeletionProtection": false');
+    expect(templateStr).toContain('"DeletionProtection":false');
   });
 });

@@ -43,9 +43,30 @@ export class DatabaseStack extends Stack {
 
     const { stage } = props;
 
-    // Default VPC — sufficient for the MVP. Two AZs are present in every
-    // default VPC, so we get HA on the subnet selection for free.
-    const vpc = ec2.Vpc.fromLookup(this, 'DefaultVpc', { isDefault: true });
+    // Self-contained VPC — sufficient for the MVP. Two AZs across public
+    // subnets only (no NAT, no private subnets) because the Lambdas are
+    // deployed into public subnets by API Gateway HTTP API integration.
+    //
+    // We use `new Vpc` (NOT `Vpc.fromLookup`) and pin AZs explicitly so
+    // `cdk synth` does not trigger a context-provider lookup (which would
+    // require AWS credentials). The two us-east-1 AZs are stable enough
+    // for MVP; prod can override via context if needed.
+    // Cast through `unknown` to bypass the `exactOptionalPropertyTypes` strictness
+    // mismatch between `Vpc` (concrete, optional fields) and `IVpc` (interface,
+    // required fields). Both objects expose the same shape we actually use.
+    const vpc = new ec2.Vpc(this, 'DefaultVpc', {
+      // CDK forbids combining `availabilityZones` and `maxAzs` so we
+      // omit `maxAzs`. The two us-east-1 AZs are stable enough for MVP;
+      // prod can override via context if needed.
+      availabilityZones: ['us-east-1a', 'us-east-1b'],
+      subnetConfiguration: [
+        {
+          cidrMask: 24,
+          name: 'Public',
+          subnetType: ec2.SubnetType.PUBLIC,
+        },
+      ],
+    }) as unknown as ec2.IVpc;
 
     const databaseSecurityGroup = new ec2.SecurityGroup(this, 'DatabaseSecurityGroup', {
       vpc,
@@ -53,11 +74,11 @@ export class DatabaseStack extends Stack {
       allowAllOutbound: true,
     });
     // Lambdas reach Postgres on 5432. The Lambdas are deployed into the
-    // default-VPC subnets by API Gateway HTTP API integration.
+    // VPC public subnets by API Gateway HTTP API integration.
     databaseSecurityGroup.addIngressRule(
       ec2.Peer.ipv4(vpc.vpcCidrBlock),
       ec2.Port.tcp(5432),
-      'Postgres from Lambdas in the default VPC',
+      'Postgres from Lambdas in the VPC',
     );
 
     // The DB credentials live in a Secrets Manager secret (auto-rotated by

@@ -20,7 +20,7 @@ function loadFrontendStackModule(): {
   FrontendStack: new (app: App, id: string, props: { stage: 'dev' | 'prod' }) => Stack;
 } {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require('../../src/stacks/FrontendStack.js');
+  return require('../../dist/src/stacks/FrontendStack.js');
 }
 
 describe('FrontendStack', () => {
@@ -45,11 +45,11 @@ describe('FrontendStack', () => {
     const template = Template.fromStack(stack);
     const templateStr = JSON.stringify(template.toJSON());
 
-    expect(templateStr).toContain('"ErrorCode": 404');
+    expect(templateStr).toMatch(/"ErrorCode":\s*404/);
     expect(templateStr).toContain('/index.html');
   });
 
-  it('exports distributionDomainName', () => {
+  it('exports distributionDomainName as a CFN output', () => {
     const app = new App();
     const { FrontendStack } = loadFrontendStackModule();
     const stack = new FrontendStack(app, 'FrontendStackTest3', { stage: 'dev' });
@@ -57,7 +57,11 @@ describe('FrontendStack', () => {
     const template = Template.fromStack(stack);
     const outputs = template.findOutputs('*');
 
-    expect(outputs['distributionDomainName']).toBeDefined();
+    // CDK generates an Output keyed by the CfnOutput id (DistributionDomainName).
+    expect(outputs['DistributionDomainName']).toBeDefined();
+    expect(outputs['DistributionDomainName']?.Export?.Name).toBe(
+      'MercadoExpress-dev-DistributionDomainName',
+    );
   });
 
   it('wires a response headers policy with security headers (RISK-W01)', () => {
@@ -68,8 +72,10 @@ describe('FrontendStack', () => {
     const template = Template.fromStack(stack);
     const templateStr = JSON.stringify(template.toJSON());
 
-    expect(templateStr).toContain('x-content-type-options');
-    expect(templateStr).toContain('x-frame-options');
+    // CDK surfaces the ResponseHeadersPolicy with camelCase property names.
+    expect(templateStr).toContain('ContentTypeOptions');
+    expect(templateStr).toContain('FrameOptions');
     expect(templateStr).toContain('DENY');
+    expect(templateStr).toContain('strict-origin-when-cross-origin');
   });
 });

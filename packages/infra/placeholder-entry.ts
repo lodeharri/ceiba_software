@@ -5,6 +5,10 @@
  * Every PR 1 Lambda returns a 503 NOT_IMPLEMENTED envelope so the
  * construct tests can assert the wiring (5 Lambdas, 5 log groups,
  * reserved concurrency per stage) without standing up real handlers.
+ *
+ * PR 1 ships this single placeholder; PR 2a replaces `entry:` in
+ * ApiStack.ts with the real per-BC handler modules so the construct
+ * uses one entry per Lambda instead of one shared placeholder.
  */
 
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';

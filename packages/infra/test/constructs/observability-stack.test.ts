@@ -20,7 +20,7 @@ function loadObservabilityStackModule(): {
   ) => Stack;
 } {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require('../../src/stacks/ObservabilityStack.js');
+  return require('../../dist/src/stacks/ObservabilityStack.js');
 }
 
 describe('ObservabilityStack', () => {
