@@ -205,8 +205,11 @@ $ pnpm format:check
 | 10  | `3d57a12` | test(shared): red-first scaffold-green smoke test                                |
 | 11  | `9afce25` | test(backend,frontend): red-first type-check and vite-build smoke tests          |
 | 12  | `e447b90` | docs: root README with scripts and stack summary                                 |
+| 13  | `a6f06cb` | chore: format baseline + fix root type-check to exec tsc --noEmit                |
+| 14  | `f5ab688` | docs(apply): record PR 0 completion + silence vue/pr prettier fight              |
+| 15  | `cce1c82` | docs(apply): record PR 0 apply-progress and turn off conflicting vue rule        |
 
-12 commits total. No `Co-authored-by` lines (verified by
+15 commits total. No `Co-authored-by` lines (verified by
 `git log --grep='^Co-authored-by'` returning empty).
 
 ---
