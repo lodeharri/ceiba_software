@@ -1,0 +1,50 @@
+{
+  "name": "mercadoexpress",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Inventory management system for a retail chain. Monorepo root.",
+  "packageManager": "pnpm@>=9",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "test": "pnpm -r --workspace-concurrency=1 test",
+    "test:watch": "pnpm -r --workspace-concurrency=1 test:watch",
+    "type-check": "pnpm -r tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "build": "pnpm -r build",
+    "db:migrate": "pnpm --filter backend db:migrate",
+    "db:seed": "pnpm --filter backend db:seed",
+    "dev:backend": "pnpm --filter backend dev",
+    "dev:frontend": "pnpm --filter frontend dev",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.6.0",
+    "@commitlint/config-conventional": "^19.6.0",
+    "@types/node": "^20.14.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.10.0",
+    "eslint-plugin-boundaries": "^4.2.2",
+    "eslint-plugin-vitest": "^0.5.4",
+    "eslint-plugin-vue": "^9.28.0",
+    "globals": "^15.9.0",
+    "husky": "^9.1.6",
+    "lint-staged": "^15.2.10",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.2",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^2.1.1"
+  },
+  "lint-staged": {
+    "*.{ts,vue,json,md,yaml,yml}": [
+      "eslint --fix",
+      "prettier --write"
+    ]
+  }
+}

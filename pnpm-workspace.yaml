@@ -1,0 +1,13 @@
+packages:
+  - 'packages/*'
+
+# Allow-list for native postinstall builds. pnpm 9+ refuses to run native
+# build scripts unless they appear here.
+onlyBuiltDependencies:
+  - bcrypt
+  - esbuild
+  - '@prisma/client'
+  - '@prisma/engines'
+  - prisma
+  - vue-demi
+  - unrs-resolver
