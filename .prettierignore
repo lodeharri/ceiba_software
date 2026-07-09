@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+coverage/
+cdk.out/
+pnpm-lock.yaml
+*.tsbuildinfo
+package-lock.json
+yarn.lock
+
+# Generated Prisma client
+packages/backend/prisma/generated/
+
+# Generated OpenAPI specs
+*.generated.ts
+*.generated.json

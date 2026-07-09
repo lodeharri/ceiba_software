@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Husky commit-msg hook. Enforces conventional commits and bans AI
+# attribution (per openspec/AGENTS.md).
+
+pnpm dlx commitlint --edit "$1"

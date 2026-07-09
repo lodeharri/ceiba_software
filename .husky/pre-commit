@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Husky pre-commit hook. Runs lint-staged on staged files.
+# Conventional commits are enforced by commit-msg (see .husky/commit-msg).
+
+pnpm lint-staged
