@@ -10,7 +10,7 @@
 
 La gerencia ha decidido desarrollar un sistema de gestión de inventario que permita controlar el stock de productos, generar alertas automáticas cuando el stock baja de un umbral mínimo, y gestionar órdenes de compra a proveedores.
 
-Tu misión es construir una **API REST** que sirva como *backbone* del futuro sistema. La API debe ser funcional, bien diseñada y con pruebas automatizadas.
+Tu misión es construir una **API REST** que sirva como _backbone_ del futuro sistema. La API debe ser funcional, bien diseñada y con pruebas automatizadas.
 
 > **Importante**: Esta es una prueba de habilidades técnicas, no un producto comercial. Se valora la calidad del diseño, la toma de decisiones arquitectónicas y la comprensión de principios de ingeniería de software.
 
@@ -94,14 +94,14 @@ Los siguientes datos de ejemplo deben existir para pruebas:
 
 **Productos iniciales sugeridos**:
 
-| SKU       | Nombre             | Categoría | Precio  | Stock | Stock Mín. | Proveedor           |
-|-----------|--------------------|-----------|---------|-------|------------|---------------------|
-| BEB-001   | Agua Mineral 500ml | Bebidas   | $1.500  | 150   | 50         | Distribuidora Andina |
-| BEB-002   | Jugo de Naranja 1L | Bebidas   | $3.200  | 30    | 40         | Lácteos del Valle    |
-| LAC-001   | Leche Entera 1L    | Lácteos   | $2.100  | 200   | 60         | Lácteos del Valle    |
-| LAC-002   | Yogur Natural 500g | Lácteos   | $2.800  | 15    | 25         | Lácteos del Valle    |
-| SNA-001   | Papas Fritas 200g  | Snacks    | $2.500  | 80    | 30         | SnacksCorp           |
-| LIM-001   | Detergente 1L      | Limpieza  | $4.500  | 45    | 20         | Químicos del Sur     |
+| SKU     | Nombre             | Categoría | Precio | Stock | Stock Mín. | Proveedor            |
+| ------- | ------------------ | --------- | ------ | ----- | ---------- | -------------------- |
+| BEB-001 | Agua Mineral 500ml | Bebidas   | $1.500 | 150   | 50         | Distribuidora Andina |
+| BEB-002 | Jugo de Naranja 1L | Bebidas   | $3.200 | 30    | 40         | Lácteos del Valle    |
+| LAC-001 | Leche Entera 1L    | Lácteos   | $2.100 | 200   | 60         | Lácteos del Valle    |
+| LAC-002 | Yogur Natural 500g | Lácteos   | $2.800 | 15    | 25         | Lácteos del Valle    |
+| SNA-001 | Papas Fritas 200g  | Snacks    | $2.500 | 80    | 30         | SnacksCorp           |
+| LIM-001 | Detergente 1L      | Limpieza  | $4.500 | 45    | 20         | Químicos del Sur     |
 
 ---
 
