@@ -1,24 +1,13 @@
 /**
- * Auth BC bootstrap (PR 1).
+ * Auth BC bootstrap (PR 2a).
  *
- * Wires the dependencies for the auth BC: prisma client, pino logger,
- * and a placeholder router. PR 2a replaces the placeholder router
- * with the real login + refresh-token use cases.
+ * Lambda entry file for the auth-lambda. The auth-lambda serves exactly
+ * one route: `POST /api/v1/auth/login`. The route does NOT require a
+ * Bearer token (it issues them), so the handler is exported bare — no
+ * `withJwt` wrap.
+ *
+ * The Lambda entry in `ApiStack` references this file with
+ * `handler: 'handler'`.
  */
 
-import { getPrismaClient } from '../../../shared/prisma-client.js';
-import { createLogger } from '../../../shared/logger.js';
-import type { PrismaLike } from '../../../shared/prisma-client.js';
-import type { Logger as PinoLogger } from 'pino';
-
-export interface AuthBootstrap {
-  prisma: PrismaLike;
-  logger: PinoLogger;
-}
-
-export function bootstrapAuth(): AuthBootstrap {
-  return {
-    prisma: getPrismaClient(),
-    logger: createLogger().child({ bc: 'auth' }),
-  };
-}
+export { handler } from './login.js';

@@ -1,20 +1,24 @@
 /**
- * ApiStack (PR 1, tasks.md §2 PR 1).
+ * ApiStack (PR 1 + PR 2a, tasks.md §2 PR 1 + PR 2a).
  *
  * Provisions:
  *   - HTTP API v2 with `corsPreflight` block (RISK-002) wired to the
  *     CloudFront distribution domain captured at synth time.
- *   - 5 NodejsFunction placeholders (one per BC) — auth, products,
- *     inventory, alerts, orders.
+ *   - Per-BC NodejsFunctions with JWT middleware on every protected
+ *     route (`/api/v1/products/*`, `/api/v1/categories/*`).
+ *   - Auth Lambda on `/api/v1/auth/login` (NO JWT middleware).
  *   - 5 CloudWatch Log Groups with 7-day retention (ADR-7).
  *   - Reserved concurrency per stage (1 in dev, default in prod per ADR-9).
  *   - Default throttle 100 / 50 from config.ts.
- *   - JWT secret + previous-secret SSM entries (consumed by jwt-middleware).
+ *   - JWT secret + previous-secret SSM SecureStrings (C1 closeout).
+ *   - DATABASE_URL route through Secrets Manager dynamic ref (C2 closeout).
+ *   - ADMIN_PASSWORD SSM SecureString (C3 closeout).
  *
- * The handlers are placeholders — PR 2a/2b/2c wire real use cases. Each
- * placeholder exports a `handler` returning a 503 NOT_IMPLEMENTED envelope.
- *
- * No domain code ships here; this stack is purely infrastructure shape.
+ * Categories BC handler is merged into the products Lambda (PR 2a
+ * decision per design.md §2.1) — both share the same Prisma client,
+ * read the same DATABASE_SECRET_ARN, and are unit-tested independently
+ * by their own bootstrap (the routes are separate HTTP routes; the
+ * Lambda does not need to know about BC boundaries).
  */
 
 import { Stack, type StackProps, CfnOutput, Duration, RemovalPolicy } from 'aws-cdk-lib';
@@ -30,23 +34,12 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type Stage, infraConfig } from '../config.js';
 
-/**
- * Resolves the absolute path of the placeholder entry file at synth time.
- * PR 2a replaces the placeholder with the real per-BC handler.
- *
- * The placeholder lives at the package root (`packages/infra/placeholder-
- * entry.ts`). We resolve relative to this file's location at compile time,
- * not to `process.cwd()`, because `cdk synth` may run from any directory
- * (vitest from the repo root, CDK CLI from packages/infra/).
- */
-function placeholderEntryPath(): string {
-  // `import.meta.url` resolves to this file at runtime; the compiled
-  // artifact lives at `dist/src/stacks/ApiStack.js`, so three levels up
-  // (out of dist/, out of src/, out of stacks/) is the package root.
+function backendHandlerPath(handlerFile: string): string {
   const here = fileURLToPath(import.meta.url);
-  return path.resolve(path.dirname(here), '..', '..', '..', 'placeholder-entry.ts');
+  // Compiled file lives at `dist/src/stacks/ApiStack.js`; the source tree
+  // is `packages/backend/src/<bc>/interface/handlers/<name>.ts`.
+  return path.resolve(path.dirname(here), '..', '..', '..', '..', 'backend', 'src', handlerFile);
 }
-
 export interface ApiStackProps extends StackProps {
   stage: Stage;
   distributionDomainName: string;
@@ -54,31 +47,81 @@ export interface ApiStackProps extends StackProps {
   securityGroupId: string;
 }
 
-interface LambdaPlaceholder {
+interface LambdaSpec {
   id: string;
   functionName: string;
-  handlerFile: string;
+  /** The handler entry file in `packages/backend/src/<sourceBc>/...` */
+  entry: string;
+  /** Whether the Lambda needs JWT middleware on every route. */
+  requiresJwt: boolean;
+  /** Route map: path → method[] for this Lambda. */
+  routes: Array<{ path: string; methods: apigwv2.HttpMethod[] }>;
 }
 
-const LAMBDAS: readonly LambdaPlaceholder[] = [
-  { id: 'AuthLambda', functionName: 'auth-lambda', handlerFile: 'auth' },
-  { id: 'ProductsLambda', functionName: 'products-lambda', handlerFile: 'products' },
-  { id: 'InventoryLambda', functionName: 'inventory-lambda', handlerFile: 'inventory' },
-  { id: 'AlertsLambda', functionName: 'alerts-lambda', handlerFile: 'alerts' },
-  { id: 'OrdersLambda', functionName: 'orders-lambda', handlerFile: 'orders' },
+/**
+ * PR 2a: only `auth` and `products`+`categories` are wired with real
+ * handlers; `inventory`, `alerts`, `orders` still resolve to the
+ * placeholder and land in PR 2b/2c.
+ */
+const LAMBDAS: readonly LambdaSpec[] = [
+  {
+    id: 'AuthLambda',
+    functionName: 'auth-lambda',
+    entry: backendHandlerPath('auth/interface/handlers/bootstrap.ts'),
+    requiresJwt: false,
+    routes: [{ path: '/api/v1/auth/login', methods: [apigwv2.HttpMethod.POST] }],
+  },
+  {
+    id: 'ProductsLambda',
+    functionName: 'products-lambda',
+    // The Lambda entry is the products BC's `bootstrap.ts`, which
+    // re-exports the shared dispatcher (design.md §2.1: categories
+    // co-hosted with products). The dispatcher wires JWT verification
+    // internally so API Gateway needs no authorizer on these routes.
+    entry: backendHandlerPath('products/interface/handlers/bootstrap.ts'),
+    requiresJwt: true,
+    routes: [
+      { path: '/api/v1/products', methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.GET] },
+      {
+        path: '/api/v1/products/{id}',
+        methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.PATCH],
+      },
+      { path: '/api/v1/categories', methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST] },
+    ],
+  },
+  {
+    id: 'InventoryLambda',
+    functionName: 'inventory-lambda',
+    entry: backendHandlerPath('inventory/interface/handlers/record-movement.ts'),
+    requiresJwt: true,
+    routes: [{ path: '/api/v1/inventory/{proxy+}', methods: [apigwv2.HttpMethod.ANY] }],
+  },
+  {
+    id: 'AlertsLambda',
+    functionName: 'alerts-lambda',
+    entry: backendHandlerPath('alerts/interface/handlers/list-alerts.ts'),
+    requiresJwt: true,
+    routes: [{ path: '/api/v1/alerts/{proxy+}', methods: [apigwv2.HttpMethod.ANY] }],
+  },
+  {
+    id: 'OrdersLambda',
+    functionName: 'orders-lambda',
+    entry: backendHandlerPath('orders/interface/handlers/receive-order.ts'),
+    requiresJwt: true,
+    routes: [{ path: '/api/v1/orders/{proxy+}', methods: [apigwv2.HttpMethod.ANY] }],
+  },
 ] as const;
 
 export class ApiStack extends Stack {
   public readonly httpApi: apigwv2.HttpApi;
+  public readonly lambdaFns: Record<string, lambda.Function>;
 
   public constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
 
     const { stage, distributionDomainName, databaseUrlSecretArn, securityGroupId } = props;
 
-    // The CORS allow-origin is the CloudFront distribution domain captured
-    // at synth time. We prepend `https://` so the preflight response is
-    // a valid Origin header value. design.md §15.2.3 (RISK-002).
+    // CORS allow-origin = CloudFront distribution domain (RISK-002).
     const corsAllowOrigins = [`https://${distributionDomainName}`];
 
     this.httpApi = new apigwv2.HttpApi(this, 'HttpApi', {
@@ -98,9 +141,7 @@ export class ApiStack extends Stack {
       },
     });
 
-    // Default throttle (HTTP API v2): 100 burst / 50 steady. Pinned in
-    // config.ts; the default stage setting on the CfnStage is the
-    // documented knob.
+    // Default throttle (HTTP API v2): 100 burst / 50 steady.
     const cfnStage = this.httpApi.defaultStage?.node.defaultChild as apigwv2.CfnStage | undefined;
     if (cfnStage) {
       cfnStage.defaultRouteSettings = {
@@ -109,11 +150,6 @@ export class ApiStack extends Stack {
       };
     }
 
-    // JWT secrets — the dual-secret rotation window requires both
-    // `JWT_SECRET` and `JWT_SECRET_PREVIOUS` to live in SSM Parameter
-    // Store as SecureStrings (encrypted at rest with the AWS-managed
-    // CMK `alias/aws/ssm`). Initial values are placeholders; the
-    // operations runbook rotates them.
     const jwtSecret = new ssm.StringParameter(this, 'JwtSecret', {
       parameterName: `/MercadoExpress/${stage}/jwt-secret`,
       stringValue: 'placeholder-replaced-by-ops',
@@ -127,12 +163,8 @@ export class ApiStack extends Stack {
       type: ssm.ParameterType.SECURE_STRING,
     });
 
-    // Reserved concurrency per stage. Dev = 1 (cheap, predictable), prod
-    // = undefined (default unreserved, cheapest).
     const reservedConcurrency = infraConfig.reservedConcurrencyByStage[stage];
 
-    // 5 log groups + 5 lambdas. We construct them in a loop so the test
-    // assertions on resource counts match the CDK resource names exactly.
     const logGroups: logs.LogGroup[] = LAMBDAS.map((l) => {
       const logGroup = new logs.LogGroup(this, `${l.id}LogGroup`, {
         logGroupName: `/aws/lambda/MercadoExpress-${stage}-${l.functionName}`,
@@ -142,21 +174,25 @@ export class ApiStack extends Stack {
       return logGroup;
     });
 
-    const lambdas: nodejs.NodejsFunction[] = LAMBDAS.map((l, i) => {
+    this.lambdaFns = {};
+    LAMBDAS.forEach((l, i) => {
       const logGroup = logGroups[i];
-      const baseProps: nodejs.NodejsFunctionProps = {
+      if (!logGroup) return;
+      const fn = new nodejs.NodejsFunction(this, l.id, {
         functionName: `MercadoExpress-${stage}-${l.functionName}`,
         runtime: lambda.Runtime.NODEJS_20_X,
-        // PR 1 placeholder entry: the real entry is wired by PR 2a.
-        // The path is resolved relative to the CDK app's working
-        // directory (packages/infra/), where `placeholder-entry.ts`
-        // lives at the package root. The file is gitignored under the
-        // build artifact category (it's a working stub).
-        entry: placeholderEntryPath(),
+        entry: l.entry,
         handler: 'handler',
-        ...(logGroup ? { logGroup } : {}),
+        logGroup,
         memorySize: 512,
         timeout: Duration.seconds(10),
+        // `bcrypt` ships native bindings + `@mapbox/node-pre-gyp` (a dev-time
+        // install helper that pulls `aws-sdk`/`nock`). Marking the module +
+        // its pre-gyp toolchain external keeps esbuild from trying to bundle
+        // the install-time scaffolding.
+        bundling: {
+          externalModules: ['bcrypt', '@mapbox/node-pre-gyp', 'aws-sdk', 'nock', 'mock-aws-s3'],
+        },
         environment: {
           STAGE: stage,
           DATABASE_URL: databaseUrlSecretArn,
@@ -165,29 +201,30 @@ export class ApiStack extends Stack {
           JWT_OVERLAP_SECONDS: '3600',
           TRUSTED_PROXY_DEPTH: '0',
           LOG_LEVEL: 'info',
+          BCRYPT_COST: '10',
         },
         ...(reservedConcurrency !== undefined
           ? { reservedConcurrentExecutions: reservedConcurrency }
           : {}),
-      };
-      return new nodejs.NodejsFunction(this, l.id, baseProps);
+      });
+      this.lambdaFns[l.id] = fn;
     });
 
-    // Wire one route per Lambda to `/api/v1/{bc}/*`. For PR 1 every route
-    // is wired to a real Lambda; the placeholder entry returns a 503
-    // NOT_IMPLEMENTED envelope. PR 2a+ replaces the entry with the real
-    // handler module.
-    for (let i = 0; i < LAMBDAS.length; i++) {
-      const l = LAMBDAS[i];
-      if (!l) continue;
-      const fn = lambdas[i];
+    // Routes. Each BC lambda routes its declared paths; no JWT middleware
+    // is applied at the API Gateway level — the JWT verification happens
+    // INSIDE each Lambda (per design.md §2.1, "No Lambda authorizer").
+    // Auth Lambda does NOT require a Bearer token (it issues them).
+    for (const l of LAMBDAS) {
+      const fn = this.lambdaFns[l.id];
       if (!fn) continue;
       const integration = new HttpLambdaIntegration(`${l.id}-Integration`, fn);
-      this.httpApi.addRoutes({
-        path: `/api/v1/${l.handlerFile}/{proxy+}`,
-        methods: [apigwv2.HttpMethod.ANY],
-        integration,
-      });
+      for (const r of l.routes) {
+        this.httpApi.addRoutes({
+          path: r.path,
+          methods: r.methods,
+          integration,
+        });
+      }
     }
 
     new CfnOutput(this, 'HttpApiUrl', {
