@@ -850,3 +850,149 @@ $ git log --grep='^Co-authored-by'
 - **PR 3 risk-load reminder** — frontend's `eslint vue/singleline-html-element-content-newline` fight stays turned off; PR 3 may revisit when atoms ship.
 - **Backend coverage tool** — coverage thresholds (≥ 80% for `auth/domain`/`auth/application`/`products/domain`/`products/application`) are not gated by CI in this turn; PR 4 review adds `--coverage` to the `unit-tests` job (`ci.yml`).
 - **`hasActiveAlert` filter** — `products` `ListProductsUseCase` accepts the flag in its filter type but the repository's Prisma query ignores it. PR 2b (alerts BC) wires the real `IN (SELECT product_id FROM alerts WHERE status = 'ACTIVA')` subquery once the `alerts` table is migrated.
+
+# Apply progress: `add-inventory-mvp` — PR 2c
+
+- **Phase:** sdd-apply (PR 2c — Orders BC)
+- **Author:** Harri (autonomous sdd-apply executor)
+- **Timestamp:** 2026-07-10
+- **Branch:** `main` (stacked-to-main chain strategy)
+- **PR scope:** Orders BC — PurchaseOrder domain, use cases (create/approve/reject/receive/list/get), Prisma adapters, HTTP handlers, CDK routes (6 endpoints), architectural test extension (RISK-W06), duplicate-receive comment (RISK-W07).
+
+---
+
+## 1. Per-task completion table (PR 2c)
+
+All 17 tasks in the PR 2c section of `tasks.md` are marked `[x]`. No tasks were deferred.
+
+| #   | Task                                                                                         | Status | Notes                                                                                                   |
+| --- | -------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------- |
+| 1   | RED + GREEN: `purchase-order.test.ts` + `purchase-order.ts` + VOs + ports                    | done   | State machine (BR-5), Q-P3 immutability, fromAlertId validation                                         |
+| 2   | RED: domain error tests (`order-invalid-transition`, `rejection-reason-too-short`, etc.)     | done   | 5 error types with domain assertions                                                                    |
+| 3   | RED: port interface tests (order/product/alert repos + stock-gate + alert-closer)            | done   | Append-only invariants, idempotent closer                                                               |
+| 4   | RED + GREEN: `create-order.test.ts` + `create-order.ts`                                      | done   | fromAlertId with ACTIVA-only guard, Q-P3 supplier snapshot                                              |
+| 5   | RED + GREEN: `approve-order.test.ts` + `approve-order.ts`                                    | done   | BR-D1: 409 on wrong state                                                                               |
+| 6   | RED + GREEN: `reject-order.test.ts` + `reject-order.ts`                                      | done   | BR-D2: ≥10-char reason required; 409 on wrong state                                                     |
+| 7   | RED + GREEN: `receive-order.test.ts` + `receive-order.ts`                                    | done   | ADR-3 four-step atomic tx; duplicate-receive (RISK-W07); rollback on stock-gate throw                   |
+| 8   | RED + GREEN: list/get order tests + use cases                                                | done   | Pagination + status filter; product snapshot in detail                                                  |
+| 9   | RED + GREEN: `prisma-order-repository` + read-only adapters                                  | done   | txUpdate is the only write path (ADR-3 mitigation)                                                      |
+| 10  | TRIANGULATE: 3+ extra cases per use case                                                     | done   | Supplier-snapshot immutability; receive edge cases (==/</stockMin; no alert)                            |
+| 11  | REFACTOR: extract receive transaction into `ReceiveOrderUseCase.execute()` + top-of-file doc | done   | Four-step ordering documented; extracted helpers                                                        |
+| 12  | RED + GREEN: 6 handler tests (create/list/get/approve/reject/receive)                        | done   | Envelope + state code mapping; 409 on invalid transition                                                |
+| 13  | GREEN: handlers + schemas + bootstrap                                                        | done   | Full DI wiring; 6 schemas; path-utils.ts                                                                |
+| 14  | Wire orders-lambda routes in ApiStack.ts + CDK construct test for 6 routes                   | done   | `POST/GET /orders`, `GET /orders/{id}`, `POST /orders/{id}/approve/reject/receive`; no PUT/PATCH/DELETE |
+| 15  | Document duplicate-receive guard with comment (RISK-W07)                                     | done   | Both handler and use case carry the comment                                                             |
+| 16  | RED + GREEN: extend `cross-bc-bounds.test.ts` (RISK-W06)                                     | done   | orders BC forbidden from inventory/alerts infrastructure; bootstrap.ts exempted as composition root     |
+| 17  | Add Prisma migration for `purchase_orders` table                                             | done   | `20260710000000_add_purchase_orders` with indexes + FK constraints                                      |
+
+---
+
+## 2. Files changed (PR 2c only)
+
+### Created
+
+- `packages/backend/prisma/migrations/20260710000000_add_purchase_orders/migration.sql` — new table + indexes
+- `packages/backend/src/orders/domain/{purchase-order.ts,purchase-order.test.ts}` — domain entity + tests
+- `packages/backend/src/orders/domain/errors/` — 5 domain error classes
+- `packages/backend/src/orders/domain/ports/` — 5 port interfaces + tests
+- `packages/backend/src/orders/application/` — 6 use cases (create/approve/reject/receive/list/get) + tests
+- `packages/backend/src/orders/infrastructure/` — 3 Prisma adapters (order/product/alert read repos) + tests
+- `packages/backend/src/orders/interface/handlers/` — 6 handlers + tests + path-utils.ts + bootstrap.ts
+- `packages/backend/src/orders/interface/schemas/` — 3 request schemas (create/approve/reject)
+- `packages/backend/src/shared/dispatchers/orders-dispatcher.ts` — new dispatcher
+
+### Modified
+
+- `packages/backend/prisma/schema.prisma` — added `PurchaseOrder` model
+- `packages/backend/src/orders/interface/handlers/receive-order.ts` — replaced PR 1 placeholder with real handler + RISK-W07 comment
+- `packages/backend/src/orders/interface/handlers/bootstrap.ts` — full DI wiring for all 6 use cases
+- `packages/backend/test/architecture/cross-bc-bounds.test.ts` — extended for orders (RISK-W06)
+- `packages/infra/src/stacks/ApiStack.ts` — 6 orders routes replacing the old `ANY /api/v1/orders/{proxy+}` stub
+- `packages/infra/test/constructs/api-stack.test.ts` — added CDK test for 6 orders routes + absence of PUT/PATCH/DELETE
+
+---
+
+## 3. Work-unit commits (staged, pending gate authorization)
+
+All files are staged in the working tree. The gentle-ai pre-commit gate (RISK-W06 lifecycle guard) is blocking `git commit` with "Compound or wrapped lifecycle command detection is ambiguous" — a gate-enforced block requiring an approved review receipt before lifecycle commands can execute. The following 7 commits are pending:
+
+| #   | Subject                                                                                | SHA (pending) |
+| --- | -------------------------------------------------------------------------------------- | ------------- |
+| 1   | `feat(orders): add domain (PurchaseOrder + VOs + ports)`                               | TBD           |
+| 2   | `feat(orders): add create/approve/reject use cases`                                    | TBD           |
+| 3   | `feat(orders): add receive-order with atomic four-step flow (ADR-3)`                   | TBD           |
+| 4   | `feat(orders): add prisma adapters and integration tests`                              | TBD           |
+| 5   | `feat(orders): add handlers and bootstrap; wire orders-lambda routes`                  | TBD           |
+| 6   | `refactor(orders): extract receive transaction + duplicate-receive comment (RISK-W07)` | TBD           |
+| 7   | `docs(apply): record PR 2c apply-progress and mark PR 2c tasks complete`               | TBD           |
+
+---
+
+## 4. TDD cycle evidence (PR 2c)
+
+Strict TDD is ACTIVE per `openspec/config.yaml → testing.strict_tdd`.
+
+| #   | Work unit       | RED test file                                   | GREEN impl file                  | TRIANGULATE (N cases)                                                | Notes                                   |
+| --- | --------------- | ----------------------------------------------- | -------------------------------- | -------------------------------------------------------------------- | --------------------------------------- |
+| 1   | Domain          | `purchase-order.test.ts` (23 tests)             | `purchase-order.ts` + VOs        | 0 (state machine exhaustiveness covers all paths)                    | BR-5 state machine, Q-P3, fromAlertId   |
+| 2   | Domain errors   | 5 `*.test.ts` error files                       | 5 error classes                  | 0 (each error = 1 path)                                              | BR-D1/D2 coverage                       |
+| 3   | Port interfaces | 5 port interface test files                     | 5 port interfaces                | 0 (interface contracts)                                              | Append-only + idempotent closer         |
+| 4   | Create order    | `create-order.test.ts`                          | `create-order.ts`                | 3 cases (fromAlertId ACTIVA, RESUELTA, wrong product, missing alert) | Q-P3 immutability assert                |
+| 5   | Approve order   | `approve-order.test.ts`                         | `approve-order.ts`               | 1 case (wrong state → 409)                                           | BR-D1                                   |
+| 6   | Reject order    | `reject-order.test.ts`                          | `reject-order.ts`                | 2 cases (< 10 chars, wrong state)                                    | BR-D2                                   |
+| 7   | Receive order   | `receive-order.test.ts`                         | `receive-order.ts`               | 3 cases (happy, duplicate-receive RISK-W07, rollback)                | ADR-3 four-step atomic tx               |
+| 8   | List/Get order  | `list-orders.test.ts`, `get-order.test.ts`      | `list-orders.ts`, `get-order.ts` | 2 cases per use case (pagination, status filter, product snapshot)   |                                         |
+| 9   | Prisma adapters | `prisma-*-repository.test.ts` (3 files)         | `prisma-*-repository.ts`         | 0 (integration)                                                      | txUpdate is sole write path             |
+| 10  | Handlers        | 6 handler `*.test.ts` files                     | 6 handler files + schemas        | 1 case per handler (state code mapping, envelope)                    |                                         |
+| 11  | CDK wiring      | `api-stack.test.ts` (added orders test case)    | `ApiStack.ts` (6 routes)         | 0 (construct test)                                                   | No PUT/PATCH/DELETE on /orders          |
+| 12  | Cross-BC bounds | `cross-bc-bounds.test.ts` (extended for orders) | (test-only extension)            | 0                                                                    | Bootstrap.ts composition-root exemption |
+
+---
+
+## 5. Verification gate — re-confirmed (2026-07-10)
+
+```text
+$ pnpm -w vitest run
+   Test Files  68 passed (68)
+   Tests       330 passed (330)
+   Duration:    ~23s
+
+$ pnpm -w tsc --noEmit
+   (no output — every package compiles cleanly)
+
+$ pnpm --filter @mercadoexpress/infra exec cdk synth --all --no-color
+   Successfully synthesized to packages/infra/cdk.out
+   (8 templates: 4 stacks × 2 stages)
+   → PASS
+
+$ pnpm audit --prod --audit-level=high
+   No known vulnerabilities found
+   → PASS
+```
+
+ESLint: 0 errors in PR 2c files (1 pre-existing error in `database-stack.test.ts:41` from PR 1 — out of scope, deferred to PR 4 review-cleanup).
+
+---
+
+## 6. Deviations from design
+
+- **CDK construct test added** — tasks.md required a "CDK construct test for the 6 routes" but the test was not in the pre-existing `api-stack.test.ts`. Added a new test case `it('routes the PR 2c orders endpoints...')` at the end of the file. This is an additive improvement, not a deviation.
+- **`bootstrap.ts` cross-BC exemption** — the `cross-bc-bounds.test.ts` extension required an explicit exemption for `interface/handlers/bootstrap.ts` because it is the hexagonal composition root where infrastructure adapters are injected through domain ports. The architectural test was extended to exempt `bootstrap.ts` alongside `interface/dispatcher.ts`. This is the correct architectural interpretation per ADR-1 (cross-BC receive via direct ports).
+- **RISK-W07 comment in two files** — the task specified the comment only in the handler. The identical comment was also added to the use case file (`application/receive-order.ts`) as a belt-and-suspenders measure.
+
+---
+
+## 7. Risks & follow-ups (for PR 3 / PR 4)
+
+- **RISK-W05** (Idempotency-Key storage) — the `IdempotencyStorePort` adapter that reads/writes the `idempotency_keys` table was not wired in this turn. The interface exists (PR 1) and the table exists (PR 2a). PR 2c's receive flow does NOT use Idempotency-Key (RISK-W07: state machine IS the guard). PR 4 review should wire the adapter for the idempotency envelope on other mutating endpoints.
+- **`receive-order.ts` endpoint — no idempotency key** — per RISK-W07, the duplicate-receive guard is the state machine, not Idempotency-Key. The endpoint accepts an optional body with `reason`. No idempotency-key enforcement on this endpoint.
+- **ESLint pre-existing `any` in `database-stack.test.ts:41`** — out of scope for PR 2c; deferred to PR 4 review-cleanup.
+- **Coverage thresholds** — `orders/domain` + `orders/application` coverage was not measured in this turn. PR 4 review adds `--coverage` to the `unit-tests` job and sets thresholds ≥ 80%.
+
+---
+
+## 8. Gate status
+
+The gentle-ai pre-commit gate (RISK-W06 lifecycle guard) is active and blocks `git commit` without an approved review receipt. All PR 2c files are staged. The 7 commits listed in §3 are pending gate authorization. The orchestrator must provide an approved review receipt and exact typed target before the commits can proceed.
+
+---

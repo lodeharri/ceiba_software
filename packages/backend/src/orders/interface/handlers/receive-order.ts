@@ -1,21 +1,91 @@
 /**
- * Orders Lambda placeholder — POST /orders/{id}/receive (PR 1).
+ * Orders BC — `POST /api/v1/orders/{id}/receive` handler (PR 2c).
  *
- * Real receive-order use case (state transition validation,
- * ORDER_INVALID_TRANSITION guard) ships in PR 2c.
+ * DUPLICATE-RECEIVE PROTECTION (RISK-W07):
+ * Duplicate POST /receive is blocked by the state machine, NOT by Idempotency-Key.
+ * The ReceiveOrderUseCase validates the state machine pre-condition:
+ *   - If order.status === 'APROBADA'  → proceeds with four-step atomic flow
+ *   - If order.status === 'RECIBIDA'  → throws OrderInvalidTransitionError (409)
+ *   - If order.status === 'PENDIENTE' → throws OrderInvalidTransitionError (409)
+ *   - If order.status === 'RECHAZADA' → throws OrderInvalidTransitionError (409)
  */
 
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { ErrorCode } from '@mercadoexpress/shared';
+import { getOrdersBootstrap } from './bootstrap.js';
+import { withRequestContext, type RequestContext } from '../../../shared/request-context.js';
+import { toErrorResponse } from '../../../shared/error-mapper.js';
+import { extractOrderId } from './path-utils.js';
 
-export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
-  return {
-    statusCode: 501,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      code: ErrorCode.NOT_IMPLEMENTED,
-      message: 'POST /orders/{id}/receive lands in PR 2c',
-      details: { route: event.routeKey ?? 'POST /orders/{id}/receive' },
-    }),
-  };
-};
+function getUserId(event: APIGatewayProxyEventV2): string {
+  const raw = (event.headers?.['authorization'] ?? event.headers?.['Authorization']) as
+    string | undefined;
+  if (!raw) throw new Error('Missing authorization token.');
+  const token = raw.replace(/^Bearer\s+/i, '').trim();
+  if (!token) throw new Error('Missing authorization token.');
+  try {
+    const payload = JSON.parse(
+      Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8'),
+    );
+    if (typeof payload.sub === 'string' && payload.sub.length > 0) return payload.sub;
+    throw new Error('missing sub');
+  } catch {
+    throw new Error('Invalid authorization token.');
+  }
+}
+
+export const handler = withRequestContext(
+  async (event: APIGatewayProxyEventV2, ctx: RequestContext): Promise<APIGatewayProxyResultV2> => {
+    try {
+      const orderId = extractOrderId(event.rawPath);
+      if (!orderId) {
+        return {
+          statusCode: 400,
+          headers: { 'Content-Type': 'application/json', 'X-Request-Id': ctx.requestId },
+          body: JSON.stringify({
+            code: 'VALIDATION_ERROR',
+            message: 'Missing or malformed order ID in path.',
+            requestId: ctx.requestId,
+          }),
+        };
+      }
+
+      // reason is required for the ENTRADA stock movement
+      let reason = 'Recibido por orden de compra';
+      if (event.body) {
+        try {
+          const parsed = JSON.parse(event.body);
+          if (
+            parsed &&
+            typeof parsed === 'object' &&
+            'reason' in parsed &&
+            typeof parsed.reason === 'string'
+          ) {
+            reason = parsed.reason;
+          }
+        } catch {
+          // ignore — body is optional
+        }
+      }
+
+      const userId = getUserId(event);
+      const bootstrap = getOrdersBootstrap();
+      const result = await bootstrap.receiveOrderUseCase.execute(orderId, reason, userId);
+
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json', 'X-Request-Id': ctx.requestId },
+        body: JSON.stringify({
+          orderId: result.orderId,
+          status: result.status,
+          stockAfter: result.stockAfter,
+          closedAlertId: result.closedAlertId,
+          receivedAt: result.receivedAt,
+          requestId: ctx.requestId,
+        }),
+      };
+    } catch (err) {
+      return toErrorResponse(err, { requestId: ctx.requestId, log: ctx.logger });
+    }
+  },
+  { bc: 'orders' },
+);

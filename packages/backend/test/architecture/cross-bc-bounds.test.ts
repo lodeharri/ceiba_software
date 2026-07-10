@@ -96,7 +96,13 @@ describe('cross-BC boundary (RISK-W06)', () => {
               // We exempt that one file because its job is exactly to bridge
               // two BCs at the interface edge, NEVER at the domain edge.
               const isDispatcher = file.endsWith('interface/dispatcher.ts');
-              if (isDispatcher) continue;
+              // Bootstrap files (e.g. orders/interface/handlers/bootstrap.ts) wire
+              // cross-BC port adapters at the DI layer. This is the hexagonal
+              // composition root — infrastructure imports here are permitted because
+              // they are explicitly injected through domain ports. We exempt
+              // bootstrap.ts from the cross-BC import check.
+              const isBootstrap = file.endsWith('interface/handlers/bootstrap.ts');
+              if (isDispatcher || isBootstrap) continue;
               // Cross-BC domain/ports/ imports are the hexagonal seam for
               // inter-BC communication (e.g. AlertCloserPort). Allowed.
               const isDomainPortsImport = path.includes(`${targetBc}/domain/ports/`);

@@ -14,6 +14,31 @@
 // Tables deferred to PR 2c: purchase_orders.
 // They will be appended via additive migrations (proposal §11.3 rollback contract).
 
+// ────────────────────────────────────────────────────────────────
+// PR 2c — Orders BC
+// ────────────────────────────────────────────────────────────────
+
+model PurchaseOrder {
+id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+productId       String     @map("product_id") @db.Uuid
+quantity        Int
+status          OrderStatus @default(PENDIENTE)
+supplierSnapshot String    @map("supplier_snapshot") @db.VarChar(120)
+fromAlertId     String?    @map("from_alert_id") @db.Uuid
+reason          String?    @db.VarChar(500)
+createdBy       String     @map("created_by") @db.Uuid
+receivedAt      DateTime?  @map("received_at") @db.Timestamptz(6)
+createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+updatedAt       DateTime   @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+// No Prisma relation to Product — cross-BC FKs are forbidden per orders/spec.md.
+// The productId is a value reference; referential integrity is validated in application layer.
+
+@@index([productId, createdAt(sort: Desc)])
+@@index([status, createdAt(sort: Desc)])
+@@map("purchase_orders")
+}
+
 generator client {
   provider = "prisma-client-js"
   // pnpm does not link .prisma output to node_modules by default; explicit

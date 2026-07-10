@@ -379,9 +379,9 @@ Five PR-shaped work units, ordered by dependency. Each has a clear start, finish
 - [ ]- [x] **GREEN:** `application/create-order.ts`.
 - [ ]- [x] **RED:** `packages/backend/src/orders/application/approve-order.test.ts` — happy PENDIENTE → APROBADA; 409 on any other current state (BR-D1).
 - [ ]- [x] **GREEN:** `application/approve-order.ts`.
-- [ ] **RED:** `packages/backend/src/orders/application/reject-order.test.ts` — happy PENDIENTE → RECHAZADA with reason; 422 on reason < 10 chars; 409 on wrong current state (BR-D2).
-- [ ] **GREEN:** `application/reject-order.ts`.
-- [ ] **RED:** `packages/backend/src/orders/application/receive-order.test.ts` — the **four-step atomic flow** (per ADR-3):
+- [x] **RED:** `packages/backend/src/orders/application/reject-order.test.ts` — happy PENDIENTE → RECHAZADA with reason; 422 on reason < 10 chars; 409 on wrong current state (BR-D2).
+- [x] **GREEN:** `application/reject-order.ts`.
+- [x] **RED:** `packages/backend/src/orders/application/receive-order.test.ts` — the **four-step atomic flow** (per ADR-3):
   - step 1: `order-repository.txUpdate(id, status='RECIBIDA')` — first write inside `prisma.$transaction`;
   - step 2: `productStockGate.txIncrementStock(tx, productId, ENTRADA, qty, reason, userId)` — re-locks the product row, inserts the StockMovement, updates `Product.stock`;
   - step 3: `alertCloserPort.txCloseIfOpenAndAboveMin(tx, productId, newStock, stockMin)` — closes active alert if `newStock > stockMin`;
@@ -389,19 +389,19 @@ Five PR-shaped work units, ordered by dependency. Each has a clear start, finish
     Asserts: order is RECIBIDA on commit; movement row exists; `Product.stock` increased; active alert (if any) is RESUELTA.
   - **Duplicate-receive test (RISK-W07):** call receive twice on the same order. Second call sees `status = RECIBIDA` and the state-machine guard throws `OrderInvalidTransitionError` (409). No movement is created on the second call.
   - **Rollback test:** stub `ProductStockGate.txIncrementStock` to throw → order stays APROBADA, no movement, no stock change, no alert mutation.
-- [ ] **GREEN:** `application/receive-order.ts`.
-- [ ] **RED:** `packages/backend/src/orders/application/{list-orders,get-order}.test.ts` — pagination + status filter; product snapshot in detail response.
-- [ ] **GREEN:** the list/get use cases.
-- [ ] **RED:** `packages/backend/src/orders/infrastructure/prisma-order-repository.test.ts` — `create` + `findById` + `txUpdate(status)`; `txUpdate` is the **only** public write path (per ADR-3 mitigation).
-- [ ] **RED:** `packages/backend/src/orders/infrastructure/prisma-{product,alert}-read-repository.test.ts` — read-only adapters.
-- [ ] **TRIANGULATE:** add 3 more cases per use case (e.g. create + then PATCH the product's `supplier`; assert the order's `supplierSnapshot` is unchanged; receive with `newStock == stockMin` does NOT close the alert; receive with `newStock < stockMin` does NOT close the alert; receive where no active alert exists is a no-op for the alert table).
-- [ ] **REFACTOR:** extract the receive transaction body into a single `ReceiveOrderUseCase.execute()` method; the four-step ordering is documented in a top-of-file comment block.
-- [ ] **RED:** `packages/backend/src/orders/interface/handlers/{create-order,list-orders,get-order,approve-order,reject-order,receive-order}.test.ts` — handler tests with envelope + state code mapping.
-- [ ] **GREEN:** handlers + schemas + bootstrap.
-- [ ] Wire `orders-lambda` routes in `ApiStack.ts`; CDK construct test for the 6 routes.
-- [ ] Document the duplicate-receive guard in the `receive-order.ts` handler with a comment (per RISK-W07): `// Duplicate POST /receive is blocked by the state machine, NOT by Idempotency-Key.`
-- [ ] **RED:** `packages/backend/test/architecture/cross-bc-bounds.test.ts` — extend to forbid orders from importing inventory/alerts infrastructure directly (the rule is enforced by the `ports/` interfaces only — RISK-W06).
-- [ ] **GREEN:** extend, ensure the build passes.
+- [x] **GREEN:** `application/receive-order.ts`.
+- [x] **RED:** `packages/backend/src/orders/application/{list-orders,get-order}.test.ts` — pagination + status filter; product snapshot in detail response.
+- [x] **GREEN:** the list/get use cases.
+- [x] **RED:** `packages/backend/src/orders/infrastructure/prisma-order-repository.test.ts` — `create` + `findById` + `txUpdate(status)`; `txUpdate` is the **only** public write path (per ADR-3 mitigation).
+- [x] **RED:** `packages/backend/src/orders/infrastructure/prisma-{product,alert}-read-repository.test.ts` — read-only adapters.
+- [x] **TRIANGULATE:** add 3 more cases per use case (e.g. create + then PATCH the product's `supplier`; assert the order's `supplierSnapshot` is unchanged; receive with `newStock == stockMin` does NOT close the alert; receive with `newStock < stockMin` does NOT close the alert; receive where no active alert exists is a no-op for the alert table).
+- [x] **REFACTOR:** extract the receive transaction body into a single `ReceiveOrderUseCase.execute()` method; the four-step ordering is documented in a top-of-file comment block.
+- [x] **RED:** `packages/backend/src/orders/interface/handlers/{create-order,list-orders,get-order,approve-order,reject-order,receive-order}.test.ts` — handler tests with envelope + state code mapping.
+- [x] **GREEN:** handlers + schemas + bootstrap.
+- [x] Wire `orders-lambda` routes in `ApiStack.ts`; CDK construct test for the 6 routes.
+- [x] Document the duplicate-receive guard in the `receive-order.ts` handler with a comment (per RISK-W07): `// Duplicate POST /receive is blocked by the state machine, NOT by Idempotency-Key.`
+- [x] **RED:** `packages/backend/test/architecture/cross-bc-bounds.test.ts` — extend to forbid orders from importing inventory/alerts infrastructure directly (the rule is enforced by the `ports/` interfaces only — RISK-W06).
+- [x] **GREEN:** extend, ensure the build passes.
 
 **Work-unit commits**:
 

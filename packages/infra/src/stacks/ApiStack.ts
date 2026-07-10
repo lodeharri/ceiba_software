@@ -114,9 +114,15 @@ const LAMBDAS: readonly LambdaSpec[] = [
   {
     id: 'OrdersLambda',
     functionName: 'orders-lambda',
-    entry: backendHandlerPath('orders/interface/handlers/receive-order.ts'),
+    entry: backendHandlerPath('shared/dispatchers/orders-dispatcher.ts'),
     requiresJwt: true,
-    routes: [{ path: '/api/v1/orders/{proxy+}', methods: [apigwv2.HttpMethod.ANY] }],
+    routes: [
+      { path: '/api/v1/orders', methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.GET] },
+      { path: '/api/v1/orders/{id}', methods: [apigwv2.HttpMethod.GET] },
+      { path: '/api/v1/orders/{id}/approve', methods: [apigwv2.HttpMethod.POST] },
+      { path: '/api/v1/orders/{id}/reject', methods: [apigwv2.HttpMethod.POST] },
+      { path: '/api/v1/orders/{id}/receive', methods: [apigwv2.HttpMethod.POST] },
+    ],
   },
 ] as const;
 
