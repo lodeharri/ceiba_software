@@ -34,11 +34,10 @@ describe('MigrationsCustomResource (BLOCKER C1 — PR 2a closeout)', () => {
   it('produces a CustomResource and Lambda in the DatabaseStack template', () => {
     const app = new App();
     const { DatabaseStack } = loadDatabaseStackModule();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const dbStack = new DatabaseStack(app, 'MigrTestDb', {
       stage: 'dev',
       env: PLACEHOLDER_ENV,
-    }) as any;
+    });
 
     const template = Template.fromStack(dbStack);
     const templateStr = JSON.stringify(template.toJSON());

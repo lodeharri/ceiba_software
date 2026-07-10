@@ -17,6 +17,7 @@
   "scripts": {
     "test": "pnpm -r --workspace-concurrency=1 test",
     "test:watch": "pnpm -r --workspace-concurrency=1 test:watch",
+    "test:e2e": "playwright test",
     "type-check": "pnpm -r --workspace-concurrency=1 exec tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -32,6 +33,7 @@
   "devDependencies": {
     "@commitlint/cli": "^19.6.0",
     "@commitlint/config-conventional": "^19.6.0",
+    "@playwright/test": "^1.47.0",
     "@types/node": "^20.14.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",

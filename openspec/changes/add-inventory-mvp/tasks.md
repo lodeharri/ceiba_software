@@ -572,29 +572,29 @@ Five PR-shaped work units, ordered by dependency. Each has a clear start, finish
 
 **Tasks checklist**:
 
-- [ ] `e2e/auth/login.spec.ts` — US-1 happy path; wrong credentials 401; 5 failures → 429; successful login does NOT count (Q-P4); window expiry.
-- [ ] `e2e/auth/rotation.spec.ts` — old-secret token valid in overlap; rejected after overlap; single-secret mode fallback.
-- [ ] `e2e/products/crud.spec.ts` — create happy; duplicate SKU 409; SKU race 201+409; PATCH with same body returns same product (RISK-S02); bad categoryId 422; PATCH rejects `sku`/`stock`/`id`.
-- [ ] `e2e/inventory/record-movement.spec.ts` — ENTRADA happy; SALIDA happy; SALIDA below 0 → 422 with `currentStock/requested/shortBy`; concurrent SALIDA serializes (RISK-002); manual ENTRADA closes active alert (RISK-001); append-only invariant (no PUT/PATCH/DELETE).
-- [ ] `e2e/inventory/list-movements.spec.ts` — default `size=50` (Q-P2); second page; out-of-range `size` 400.
-- [ ] `e2e/alerts/lifecycle.spec.ts` — first crossing opens alert; repeated event no-op; concurrent create; partial unique index violation; alert auto-closes on recovery; order receive closes alert (BR-3, BR-D4).
-- [ ] `e2e/orders/lifecycle.spec.ts` — create manual; create from alert; quantity below policy 422; supplier snapshot is write-once (Q-P3); approve PENDIENTE→APROBADA; reject requires ≥10 chars (BR-D2); receive APROBADA→RECIBIDA atomic; **duplicate receive blocked by state machine** (RISK-W07).
-- [ ] `e2e/cors-preflight.spec.ts` (RISK-002) — `OPTIONS /api/v1/products` from SPA origin returns the CloudFront allow-origin and the 4 allow-headers.
-- [ ] `e2e/recovery-closes-alert.spec.ts` (RISK-001) — manual ENTRADA above `stockMin` closes active alert; tx rolls back if alert-close throws.
-- [ ] `e2e/shared-counter.spec.ts` (RISK-003) — two parallel `POST /auth/login` share the failure counter; 6th attempt → 429.
-- [ ] `e2e/xss-text.spec.ts` (RISK-W01) — product name with `<script>alert(1)</script>` renders as literal text.
-- [ ] `scripts/smoke-cold-start.ts` (RISK-W09) — hits a deployed dev URL after 30 minutes idle, asserts p95 latency < 3000 ms.
-- [ ] `scripts/smoke-log-volume.ts` (RISK-W10) — fetches CloudWatch metrics for the 5 Lambda log groups over the last 24h, asserts daily ingested bytes ≤ the design's budget (~700 MB/day).
-- [ ] `docs/adr/0001-cross-bc-receive-via-direct-ports.md` — ADR-1 narrative.
-- [ ] `docs/adr/0002-pessimistic-row-lock.md` — ADR-2 narrative.
-- [ ] `docs/adr/0003-receive-transactionality.md` — ADR-3 narrative.
-- [ ] `docs/adr/0004-movement-type-enum.md` — ADR-4 narrative.
-- [ ] `docs/adr/0005-region-and-cors.md` — ADR-5 + ADR-8 narrative.
-- [ ] `docs/adr/0006-throttling-and-concurrency.md` — ADR-9 narrative.
-- [ ] `docs/adr/0007-cloudwatch-retention.md` — ADR-7 narrative.
-- [ ] `README.md` at repo root + `packages/backend/README.md` + `packages/frontend/README.md` + `packages/infra/README.md` — each with stack, scripts, dev-loop, deploy notes.
-- [ ] Verify all commits are conventional-commits compliant; `commitlint` is enforced by husky (PR 0 already wired; confirm here).
-- [ ] **Final review pass:** `review-readability` lens (recommended) on the full diff. The orchestrator may run this in parallel.
+- [x] `e2e/auth/login.spec.ts` — US-1 happy path; wrong credentials 401; 5 failures → 429; successful login does NOT count (Q-P4); window expiry.
+- [x] `e2e/auth/rotation.spec.ts` — old-secret token valid in overlap; rejected after overlap; single-secret mode fallback.
+- [x] `e2e/products/crud.spec.ts` — create happy; duplicate SKU 409; SKU race 201+409; PATCH with same body returns same product (RISK-S02); bad categoryId 422; PATCH rejects `sku`/`stock`/`id`.
+- [x] `e2e/inventory/record-movement.spec.ts` — ENTRADA happy; SALIDA happy; SALIDA below 0 → 422 with `currentStock/requested/shortBy`; concurrent SALIDA serializes (RISK-002); manual ENTRADA closes active alert (RISK-001); append-only invariant (no PUT/PATCH/DELETE).
+- [x] `e2e/inventory/list-movements.spec.ts` — default `size=50` (Q-P2); second page; out-of-range `size` 400.
+- [x] `e2e/alerts/lifecycle.spec.ts` — first crossing opens alert; repeated event no-op; concurrent create; partial unique index violation; alert auto-closes on recovery; order receive closes alert (BR-3, BR-D4).
+- [x] `e2e/orders/lifecycle.spec.ts` — create manual; create from alert; quantity below policy 422; supplier snapshot is write-once (Q-P3); approve PENDIENTE→APROBADA; reject requires ≥10 chars (BR-D2); receive APROBADA→RECIBIDA atomic; **duplicate receive blocked by state machine** (RISK-W07).
+- [x] `e2e/cors-preflight.spec.ts` (RISK-002) — `OPTIONS /api/v1/products` from SPA origin returns the CloudFront allow-origin and the 4 allow-headers.
+- [x] `e2e/recovery-closes-alert.spec.ts` (RISK-001) — manual ENTRADA above `stockMin` closes active alert; tx rolls back if alert-close throws.
+- [x] `e2e/shared-counter.spec.ts` (RISK-003) — two parallel `POST /auth/login` share the failure counter; 6th attempt → 429.
+- [x] `e2e/xss-text.spec.ts` (RISK-W01) — product name with `<script>alert(1)</script>` renders as literal text.
+- [x] `scripts/smoke-cold-start.ts` (RISK-W09) — hits a deployed dev URL after 30 minutes idle, asserts p95 latency < 3000 ms.
+- [x] `scripts/smoke-log-volume.ts` (RISK-W10) — fetches CloudWatch metrics for the 5 Lambda log groups over the last 24h, asserts daily ingested bytes ≤ the design's budget (~700 MB/day).
+- [x] `docs/adr/0001-cross-bc-receive-via-direct-ports.md` — ADR-1 narrative.
+- [x] `docs/adr/0002-pessimistic-row-lock.md` — ADR-2 narrative.
+- [x] `docs/adr/0003-receive-transactionality.md` — ADR-3 narrative.
+- [x] `docs/adr/0004-movement-type-enum.md` — ADR-4 narrative.
+- [x] `docs/adr/0005-region-and-cors.md` — ADR-5 + ADR-8 narrative.
+- [x] `docs/adr/0006-throttling-and-concurrency.md` — ADR-9 narrative.
+- [x] `docs/adr/0007-cloudwatch-retention.md` — ADR-7 narrative.
+- [x] `README.md` at repo root + `packages/backend/README.md` + `packages/frontend/README.md` + `packages/infra/README.md` — each with stack, scripts, dev-loop, deploy notes.
+- [x] Verify all commits are conventional-commits compliant; `commitlint` is enforced by husky (PR 0 already wired; confirm here).
+- [x] **Final review pass:** `review-readability` lens (recommended) on the full diff. The orchestrator may run this in parallel.
 
 **Work-unit commits**:
 
