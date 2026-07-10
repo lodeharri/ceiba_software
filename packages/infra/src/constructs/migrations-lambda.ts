@@ -20,10 +20,26 @@
  */
 
 import { spawnSync } from 'node:child_process';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
 import { GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
 import type { SSMClient } from '@aws-sdk/client-ssm';
 import { GetParameterCommand } from '@aws-sdk/client-ssm';
+
+// Resolve THIS file's directory in either CJS (production Lambda after
+// esbuild bundling) or ESM (test run via Node's require(esm)). CJS strips
+// `import.meta.url` to an empty object, so we fall back to the standard
+// `__dirname` shim which is always available in CJS.
+const THIS_DIR: string =
+  typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
+// Resolve the Prisma schema + seed paths relative to THIS file so the
+// subprocess finds them regardless of CWD (test runs from packages/infra,
+// production Lambda runs from /var/task after esbuild bundling).
+// From packages/infra/src/constructs/ (or dist/src/constructs/), the
+// backend prisma dir is 4 levels up + packages/backend/prisma/.
+const PRISMA_SCHEMA_PATH = path.resolve(THIS_DIR, '../../../../backend/prisma/schema.prisma');
+const PRISMA_SEED_PATH = path.resolve(THIS_DIR, '../../../../backend/prisma/seed.ts');
 
 interface CloudFormationResponse {
   Status: 'SUCCESS' | 'FAILED';
@@ -169,7 +185,7 @@ export const handler = async (
 
     const migrate = runCommand(
       'npx',
-      ['prisma', 'migrate', 'deploy', '--schema', './prisma/schema.prisma'],
+      ['prisma', 'migrate', 'deploy', '--schema', PRISMA_SCHEMA_PATH],
       env,
     );
     if (!migrate.ok) {
@@ -182,7 +198,7 @@ export const handler = async (
 
     // eslint-disable-next-line no-console
     console.log(JSON.stringify({ msg: 'running prisma seed' }));
-    const seed = runCommand('npx', ['tsx', 'prisma/seed.ts'], env);
+    const seed = runCommand('npx', ['tsx', PRISMA_SEED_PATH], env);
     if (!seed.ok) {
       const reason = `prisma seed failed: ${seed.stderr}`;
 

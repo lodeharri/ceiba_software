@@ -238,3 +238,186 @@ untracked in the working tree.
 3. **PR 4 — frontend container + docs** (readability lens, ~150 LOC).
 4. After PR 3 + PR 4, run `/sdd-verify add-localstack-dev-env` to validate
    the full change against the spec.
+
+---
+
+# Apply progress update: PR 3 parte B — Dockerfiles + entrypoint + script wrappers
+
+- **Phase:** sdd-apply continuation (reduced PR 3/PR 4 slice)
+- **Timestamp:** 2026-07-10
+- **Branch:** `main`
+- **Artifact store used:** `openspec`
+- **Previous progress handling:** existing `apply-progress.md` was read first; this section is appended cumulatively and does not overwrite PR 2 evidence.
+- **Parent delegated scope:** create `scripts/dev-up.sh`, `scripts/dev-down.sh`, `docker/deployer/Dockerfile`, `docker/deployer/entrypoint.sh`, and `docker/frontend/Dockerfile`; chmod scripts/entrypoint; verify file presence. No commit. No Docker build. No `docker compose up`.
+
+## Structured status consumed / produced
+
+```yaml
+schemaName: spec-driven
+changeName: add-localstack-dev-env
+artifactStore: openspec
+planningHome:
+  root: /home/harri/development/projects/ceiba_software
+  changesDir: openspec/changes
+changeRoot: openspec/changes/add-localstack-dev-env
+artifactPaths:
+  proposal: [openspec/changes/add-localstack-dev-env/proposal.md]
+  specs:
+    - openspec/changes/add-localstack-dev-env/specs/local-dev-env/spec.md
+    - openspec/changes/add-localstack-dev-env/specs/deployer/spec.md
+    - openspec/changes/add-localstack-dev-env/specs/env-config/spec.md
+  design: [openspec/changes/add-localstack-dev-env/design.md]
+  tasks: [openspec/changes/add-localstack-dev-env/tasks.md]
+  applyProgress: [openspec/changes/add-localstack-dev-env/apply-progress.md]
+artifacts:
+  proposal: done
+  specs: done
+  design: done
+  tasks: partial
+  applyProgress: done
+  verifyReport: missing
+taskProgress:
+  total: 69
+  complete: 24
+  remaining: 45
+applyState: ready
+dependencies:
+  apply: ready
+  verify: blocked
+  sync: not_applicable
+  archive: blocked
+actionContext:
+  mode: repo-local
+  workspaceRoot: /home/harri/development/projects/ceiba_software
+  allowedEditRoots:
+    - /home/harri/development/projects/ceiba_software
+  warnings:
+    - Parent prompt did not include structured SDD status; status was produced from OpenSpec artifacts.
+    - Parent prompt scoped this batch to PR 3 parte B only; broader PR 3/PR 4 verification tasks remain unchecked.
+    - Reading .env.dev.example through the safe file reader was blocked by policy, so this batch did not inspect env-file content.
+nextRecommended: continue apply for remaining PR 3/PR 4 tasks, then run sdd-verify add-localstack-dev-env
+isNonAuthoritative: false
+```
+
+## Completed tasks and persisted checkbox updates
+
+Updated `openspec/changes/add-localstack-dev-env/tasks.md` so the completed reduced-scope implementation tasks are visibly checked:
+
+- [x] **GREEN:** crear `docker/deployer/Dockerfile` con Node 20 alpine, pnpm 9, copia workspace files, install deps, build infra, entrypoint
+- [x] **GREEN:** crear `docker/deployer/entrypoint.sh`
+- [x] **GREEN:** crear `scripts/dev-up.sh` para bootstrap de `.env.dev`, `.env.dev.local`, `.docker-shared` y `docker compose --env-file .env.dev -f docker-compose.dev.yml up -d`.
+- [x] **GREEN:** crear `scripts/dev-down.sh` para `docker compose --env-file .env.dev -f docker-compose.dev.yml down -v "$@"`.
+- [x] **GREEN:** crear `docker/frontend/Dockerfile` con Node 20 alpine, pnpm 9, copia workspace files, install deps, EXPOSE 5173, CMD `pnpm dev --host 0.0.0.0 --port 5173`
+
+## Files changed in this batch
+
+### Created
+
+- `scripts/dev-up.sh`
+- `scripts/dev-down.sh`
+- `docker/deployer/Dockerfile`
+- `docker/deployer/entrypoint.sh`
+- `docker/frontend/Dockerfile`
+
+### Modified
+
+- `openspec/changes/add-localstack-dev-env/tasks.md` — persisted task checkbox updates + reduced-scope script wrapper checkboxes.
+- `openspec/changes/add-localstack-dev-env/apply-progress.md` — this cumulative progress section.
+
+## TDD Cycle Evidence
+
+Strict TDD is active in `openspec/config.yaml`. This reduced slice is structural Docker/shell scaffolding, so the RED step used shell/static assertions that failed because the required files did not exist yet; no production application logic was written.
+
+| Task                | Test / check                                                      | Layer             | Safety net      | RED                               | GREEN                             | TRIANGULATE                                                           | REFACTOR                                                                 |
+| ------------------- | ----------------------------------------------------------------- | ----------------- | --------------- | --------------------------------- | --------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Script wrappers     | shell `test -f` for `scripts/dev-up.sh` and `scripts/dev-down.sh` | Static shell      | N/A (new files) | Failed with missing files, exit 1 | Files created and `sh -n` passed  | Static grep confirmed explicit `--env-file .env.dev` compose commands | None needed                                                              |
+| Deployer Dockerfile | shell `test -f docker/deployer/Dockerfile`                        | Static Dockerfile | N/A (new file)  | Failed with missing file, exit 1  | File created                      | Static grep confirmed `python3` and `RUN pnpm build` are present      | Added `python3` and `pnpm build` to satisfy entrypoint/CDK runtime needs |
+| Deployer entrypoint | shell `test -f docker/deployer/entrypoint.sh`                     | Static shell      | N/A (new file)  | Failed with missing file, exit 1  | File created and `bash -n` passed | Static grep confirmed `pnpm exec cdk deploy` command exists           | None needed                                                              |
+| Frontend Dockerfile | shell `test -f docker/frontend/Dockerfile`                        | Static Dockerfile | N/A (new file)  | Failed with missing file, exit 1  | File created                      | Static grep confirmed Vite `pnpm dev --host 0.0.0.0 --port 5173` CMD  | None needed                                                              |
+
+## Verification commands run
+
+| Command                                                                                                       | Result                                                               |
+| ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `sh -n scripts/dev-up.sh`                                                                                     | exit 0                                                               |
+| `sh -n scripts/dev-down.sh`                                                                                   | exit 0                                                               |
+| `bash -n docker/deployer/entrypoint.sh`                                                                       | exit 0                                                               |
+| `test -x scripts/dev-up.sh`                                                                                   | exit 0                                                               |
+| `test -x scripts/dev-down.sh`                                                                                 | exit 0                                                               |
+| `test -x docker/deployer/entrypoint.sh`                                                                       | exit 0                                                               |
+| `grep -q -- '--env-file .env.dev -f docker-compose.dev.yml up -d' scripts/dev-up.sh`                          | exit 0                                                               |
+| `grep -q -- '--env-file .env.dev -f docker-compose.dev.yml down -v' scripts/dev-down.sh`                      | exit 0                                                               |
+| `grep -q 'pnpm exec cdk deploy' docker/deployer/entrypoint.sh`                                                | exit 0                                                               |
+| `grep -q 'python3' docker/deployer/Dockerfile`                                                                | exit 0                                                               |
+| `grep -q 'RUN pnpm build' docker/deployer/Dockerfile`                                                         | exit 0                                                               |
+| `grep -q 'CMD ["pnpm", "dev", "--host", "0.0.0.0", "--port", "5173"]' docker/frontend/Dockerfile`             | exit 0                                                               |
+| `ls -la scripts/dev-*.sh docker/deployer/Dockerfile docker/deployer/entrypoint.sh docker/frontend/Dockerfile` | all five requested files present; wrappers and entrypoint executable |
+
+Commands intentionally **not** run per delegated scope: `docker build`, `docker compose up`, and `docker compose down`.
+
+## Deviations from delegated snippet / design
+
+- `docker/deployer/Dockerfile` includes `python3` in `apk add` because `docker/deployer/entrypoint.sh` extracts the API URL with `python3 -c`. Without this package, the deployer would fail at runtime.
+- `docker/deployer/Dockerfile` includes `RUN pnpm build` after copying packages because `packages/infra/cdk.json` runs `node dist/src/app.js`; without building the infra package, `pnpm exec cdk deploy` would not find the CDK app output.
+
+## Workload / PR boundary
+
+- Boundary honored: PR 3 parte B reduced slice only (Dockerfiles + deployer entrypoint + dev script wrappers), plus the frontend Dockerfile requested by the parent prompt.
+- No commit was created.
+- No Docker image build or compose startup was executed.
+
+## Remaining unchecked task lines
+
+The task artifact still contains unchecked work outside this reduced slice:
+
+```text
+55:- [ ] **RED:** `packages/infra/test/config.test.ts` — `loadConfig()` returns stage-aware defaults when env vars are absent.
+59:- [ ] **GREEN:** extend `packages/infra/src/config.ts`:
+65:- [ ] **TRIANGULATE:** add 4 more cases to `config.test.ts`:
+70:- [ ] **REFACTOR:** extract per-stage default constants to `packages/infra/src/config-stages.ts`:
+74:- [ ] **RED:** update `packages/infra/test/constructs/api-stack.test.ts` (existing) to assert the prop name `corsAllowOrigin`:
+77:- [ ] **GREEN:** rename `ApiStack` prop in `packages/infra/src/stacks/ApiStack.ts`:
+81:- [ ] **GREEN:** update `packages/infra/src/app.ts` callers:
+84:- [ ] **TRIANGULATE:** add 1 case to `api-stack.test.ts`:
+86:- [ ] **REFACTOR:** extract the `corsPreflight` config block in `ApiStack` to a single `buildCorsPreflight(allowOrigins: string[])` helper. No new file; lives in `ApiStack.ts` as a private function.
+87:- [ ] Add `synth:localstack` script to `packages/infra/package.json`:
+90:- [ ] **Verify (no production code):** run `pnpm --filter infra exec cdk synth --context stage=localstack --no-color` → exit 0, no errors (4 stacks still generated for now, RDS/CloudFront skip happens in PR 2).
+91:- [ ] **Verify (no production code):** run `pnpm --filter infra exec cdk synth --context stage=dev --no-color` → exit 0, identical template to pre-change (backward compatibility smoke test).
+92:- [ ] **Verify (no production code):** run `pnpm --filter infra test` → green; coverage for `config.ts` and `ApiStack.ts` ≥ 80%.
+139:- [ ] **TRIANGULATE:** add 3 more cases to `app.test.ts`:
+152:- [ ] **TRIANGULATE:** add 2 more cases to `api-stack.test.ts`:
+155:- [ ] **REFACTOR:** extract the env-assembly branching into a private helper `buildLambdaEnvironment(databaseSource, jwtSource)` so the Lambda definition site reads cleanly.
+162:- [ ] **TRIANGULATE:** add 1 case to `app.test.ts`:
+256:- [ ] **RED:** `docker/postgres-init/01-pgvector.sql.test.ts` — verifica que el archivo contiene `CREATE EXTENSION IF NOT EXISTS vector` y `pgcrypto`
+257:- [ ] **GREEN:** crear `docker/postgres-init/01-pgvector.sql` con ambas extensions
+261:- [ ] **RED:** test que valida la estructura YAML del compose (servicios requeridos: postgres, localstack, deployer, frontend)
+262:- [ ] **GREEN:** crear `docker-compose.dev.yml` con:
+269:- [ ] **TRIANGULATE:** cambiar POSTGRES_PORT a 5433 y verificar que compose funciona sin tocar código
+277:- [ ] **RED:** test del script con bats o similar — verifica que espera LocalStack healthy antes de cdk deploy
+286:- [ ] **TRIANGULATE:** caso donde LocalStack no levanta en 5min → exit code claro
+295:- [ ] **GREEN:** crear `.env.dev.example` con todas las env vars y defaults:
+306:- [ ] **GREEN:** agregar a `.gitignore`:
+323:- [ ] Ejecutar `docker compose -f docker-compose.dev.yml config` → YAML válido
+324:- [ ] Ejecutar `docker compose -f docker-compose.dev.yml up -d postgres localstack` → ambos healthy en 30s
+325:- [ ] Verificar `curl http://localhost:4566/_localstack/health` → 200 OK
+326:- [ ] Verificar `docker exec ceiba-postgres psql -U ceiba -d mercadoexpress -c "\\dx"` → lista vector y pgcrypto
+327:- [ ] Ejecutar `docker compose -f docker-compose.dev.yml down -v` → limpia volúmenes
+328:- [ ] Ejecutar `docker compose -f docker-compose.dev.yml up -d` → todos los servicios levantan en 5min
+329:- [ ] Verificar `/shared/.api-url` existe con URL válida después de deploy
+333:- [ ] Commit con mensaje `chore(dev): add docker-compose for local stack with auto CDK deploy`
+345:- [ ] **RED:** test que verifica que vite.config.ts lee VITE_API_BASE_URL de process.env con fallback
+346:- [ ] **GREEN:** modificar `packages/frontend/vite.config.ts`:
+350:- [ ] **TRIANGULATE:** caso donde .api-url tiene URL distinta a env var → .api-url gana
+354:- [ ] **GREEN:** agregar servicio `frontend` a `docker-compose.dev.yml`:
+364:- [ ] **GREEN:** crear `docs/LOCAL-DEV.md` con:
+384:- [ ] **GREEN:** agregar sección "Local development" en `README.md` raíz con link a `docs/LOCAL-DEV.md`
+388:- [ ] Ejecutar `docker compose -f docker-compose.dev.yml up -d frontend` → Vite levanta
+389:- [ ] `curl http://localhost:5173` → HTML con `<title>MercadoExpress</title>`
+390:- [ ] Verificar Vite compila sin errores
+391:- [ ] Verificar que `VITE_API_BASE_URL` está disponible en el bundle (`grep -r VITE_API_BASE_URL packages/frontend/dist/`)
+395:- [ ] Commit con mensaje `chore(dev): add frontend container, Vite env config, and LOCAL-DEV docs`
+```
+
+## Final working tree snapshot for this batch
+
+See `git status --short` in the user-facing report. Pre-existing changes from earlier PR 3 work are still present and were not reverted.

@@ -270,12 +270,12 @@ PR 3 + PR 4 combined exceed 400 LOC, so they will be delivered as chained PRs wi
 
 ### docker/deployer/Dockerfile
 
-- [ ] **GREEN:** crear `docker/deployer/Dockerfile` con Node 20 alpine, pnpm 9, copia workspace files, install deps, build infra, entrypoint
+- [x] **GREEN:** crear `docker/deployer/Dockerfile` con Node 20 alpine, pnpm 9, copia workspace files, install deps, build infra, entrypoint
 
 ### docker/deployer/entrypoint.sh
 
 - [ ] **RED:** test del script con bats o similar — verifica que espera LocalStack healthy antes de cdk deploy
-- [ ] **GREEN:** crear `docker/deployer/entrypoint.sh`:
+- [x] **GREEN:** crear `docker/deployer/entrypoint.sh`:
   - Log resolved env vars (STAGE, AWS_ENDPOINT_URL, DATABASE_URL, ports)
   - Wait for LocalStack healthy (timeout 300s, polling cada 2s)
   - Wait for Postgres healthy (timeout 60s, pg_isready)
@@ -284,6 +284,11 @@ PR 3 + PR 4 combined exceed 400 LOC, so they will be delivered as chained PRs wi
   - Write API URL a /shared/.api-url
   - `tail -f /dev/null` para mantener container alive
 - [ ] **TRIANGULATE:** caso donde LocalStack no levanta en 5min → exit code claro
+
+### Script wrappers (PR 3 parte B reduced scope)
+
+- [x] **GREEN:** crear `scripts/dev-up.sh` para bootstrap de `.env.dev`, `.env.dev.local`, `.docker-shared` y `docker compose --env-file .env.dev -f docker-compose.dev.yml up -d`.
+- [x] **GREEN:** crear `scripts/dev-down.sh` para `docker compose --env-file .env.dev -f docker-compose.dev.yml down -v "$@"`.
 
 ### .env.dev.example
 
@@ -333,7 +338,7 @@ PR 3 + PR 4 combined exceed 400 LOC, so they will be delivered as chained PRs wi
 
 ### docker/frontend/Dockerfile
 
-- [ ] **GREEN:** crear `docker/frontend/Dockerfile` con Node 20 alpine, pnpm 9, copia workspace files, install deps, EXPOSE 5173, CMD `pnpm dev --host 0.0.0.0 --port 5173`
+- [x] **GREEN:** crear `docker/frontend/Dockerfile` con Node 20 alpine, pnpm 9, copia workspace files, install deps, EXPOSE 5173, CMD `pnpm dev --host 0.0.0.0 --port 5173`
 
 ### packages/frontend/vite.config.ts
 

@@ -21,6 +21,7 @@ test-results/
 .env
 .env.*
 !.env.example
+!.env.dev.example
 !.env.development
 !.env.production
 
@@ -38,3 +39,9 @@ test-results/
 
 # Prisma generated client
 packages/backend/prisma/generated/
+
+# Local dev environment
+.env.dev
+.env.dev.local
+.api-url
+cdk.out/
