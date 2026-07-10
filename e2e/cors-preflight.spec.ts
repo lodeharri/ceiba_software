@@ -5,7 +5,7 @@ import { test, expect } from '@playwright/test';
  * Verifies OPTIONS request returns correct CORS headers
  */
 test('CORS: preflight returns correct headers', async ({ request, baseURL }) => {
-  const response = await request(`${baseURL}/api/v1/products`, {
+  const response = await request.fetch(`${baseURL}/api/v1/products`, {
     method: 'OPTIONS',
     headers: {
       Origin: 'https://example.cloudfront.net',

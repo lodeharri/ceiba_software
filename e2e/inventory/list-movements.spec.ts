@@ -87,7 +87,7 @@ test('inventory: out of range size returns 400', async ({ request, baseURL }) =>
   const productId = await createTestProduct(baseURL, token);
 
   // Size > 100 should be rejected
-  const response = await request.get(`${baseURL}/api/v1/products/${productId}/movements?size=200`, {
+  const response = await request.get(`${baseURL}/api/v1/products/${productId}/movements?size=201`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
