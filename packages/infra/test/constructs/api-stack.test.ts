@@ -133,4 +133,33 @@ describe('ApiStack', () => {
     expect(matches.length).toBeGreaterThanOrEqual(5);
     expect(templateStr).toMatch(/"RetentionInDays":7/);
   });
+
+  it('routes the PR 2a endpoints (auth login + products + categories) and exposes no JWT middleware node on auth', () => {
+    const app = new App();
+    const { ApiStack } = loadApiStackModule();
+    const stack = new ApiStack(app, 'ApiStackTestRoutes', {
+      stage: 'dev',
+      distributionDomainName: 'd111111abcdef8.cloudfront.net',
+      databaseUrlSecretArn: 'arn:aws:ssm:us-east-1:000000000000:parameter/db',
+      securityGroupId: 'sg-00000000',
+      env: PLACEHOLDER_ENV,
+    });
+
+    const template = Template.fromStack(stack as unknown as Stack);
+    const templateStr = JSON.stringify(template.toJSON());
+
+    // Auth route is wired as POST.
+    expect(templateStr).toContain('/api/v1/auth/login');
+    // Product + categories routes.
+    expect(templateStr).toContain('/api/v1/products');
+    expect(templateStr).toContain('/api/v1/categories');
+    expect(templateStr).toContain('/api/v1/products/{id}');
+    // The auth lambda has NO apigwv2-authorizer attached.
+    expect(templateStr).toContain('AuthLambda');
+    // The route map declares POST + GET + PATCH (OPTIONS handled by CORS preflight).
+    expect(templateStr).toContain('POST /api/v1/auth/login');
+    expect(templateStr).toContain('POST /api/v1/products');
+    expect(templateStr).toContain('GET /api/v1/products');
+    expect(templateStr).toContain('PATCH /api/v1/products/{id}');
+  });
 });

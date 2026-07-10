@@ -176,76 +176,76 @@ Five PR-shaped work units, ordered by dependency. Each has a clear start, finish
 
 **Shared package** (per `shared/spec.md`):
 
-- [ ] **RED:** `packages/shared/src/schemas/common/error-envelope.test.ts` — assert envelope shape for 400/401/403/404/409/422/429/500.
-- [ ] **GREEN:** implement `packages/shared/src/schemas/common/error-envelope.ts` (Zod) + `packages/shared/src/errors/errorCodes.ts` with every code from the specs (`UNAUTHORIZED`, `TOKEN_EXPIRED`, `INVALID_CREDENTIALS`, `RATE_LIMITED`, `VALIDATION_ERROR`, `NOT_FOUND`, `FORBIDDEN`, `SKU_ALREADY_EXISTS`, `CATEGORY_NOT_FOUND`, `STOCK_WOULD_GO_NEGATIVE`, `ORDER_QTY_BELOW_POLICY`, `ALERT_NOT_ACTIVE`, `ALERT_ALREADY_ACTIVE`, `ORDER_INVALID_TRANSITION`, `REJECTION_REASON_TOO_SHORT`, `PRODUCT_NOT_FOUND`, `INTERNAL_ERROR`, `IDEMPOTENCY_KEY_CONFLICT`, `NETWORK_ERROR`, `TIMEOUT`).
-- [ ] **RED:** `packages/shared/src/schemas/common/page.test.ts` — default pagination, out-of-range size, empty result.
-- [ ] **GREEN:** `packages/shared/src/schemas/common/page.ts` (Zod generic `Page<T>`).
-- [ ] **RED:** `packages/shared/src/schemas/common/idempotency-key.test.ts` — UUID v4 validation; missing header is allowed.
-- [ ] **GREEN:** `packages/shared/src/schemas/common/idempotency-key.ts`.
-- [ ] **RED:** `packages/shared/src/domain/money.test.ts` — `Decimal → string → parseInt` round-trip; rejects fractional input.
-- [ ] **GREEN:** `packages/shared/src/domain/money.ts` + `MoneySerializer.ts`.
-- [ ] **RED:** `packages/shared/src/domain/{sku,quantity,reason,email,username,password-hash,role,movement-type,alert-status,order-status,category-name}.test.ts` (one per VO; assert each invariant).
-- [ ] **GREEN:** implement the VOs as plain TS classes / branded types.
-- [ ] **RED:** `packages/shared/test/architecture/no-domain-provider-imports.test.ts` (RED first) — fails on any `import` in `packages/shared/src/*/domain/**` whose path matches `*sdk*` or `*provider*`. (Anticipates the backend pattern from RISK-W06; same shape.)
-- [ ] Wire `@asteasolutions/zod-to-openapi` registry in `packages/shared/src/openapi/registry.ts` and expose `extendZodWithOpenApi(z)`.
-- [ ] Add per-BC schema files under `packages/shared/src/schemas/{auth,products,inventory,alerts,orders,categories}/` (request + response Zod for every route in `design.md` §9).
-- [ ] Add a smoke test asserting every export from `packages/shared/src/index.ts` is reachable (no tree-shaking regression).
+- [x]- [x] **RED:** `packages/shared/src/schemas/common/error-envelope.test.ts` — assert envelope shape for 400/401/403/404/409/422/429/500.
+- [x]- [x] **GREEN:** implement `packages/shared/src/schemas/common/error-envelope.ts` (Zod) + `packages/shared/src/errors/errorCodes.ts` with every code from the specs (`UNAUTHORIZED`, `TOKEN_EXPIRED`, `INVALID_CREDENTIALS`, `RATE_LIMITED`, `VALIDATION_ERROR`, `NOT_FOUND`, `FORBIDDEN`, `SKU_ALREADY_EXISTS`, `CATEGORY_NOT_FOUND`, `STOCK_WOULD_GO_NEGATIVE`, `ORDER_QTY_BELOW_POLICY`, `ALERT_NOT_ACTIVE`, `ALERT_ALREADY_ACTIVE`, `ORDER_INVALID_TRANSITION`, `REJECTION_REASON_TOO_SHORT`, `PRODUCT_NOT_FOUND`, `INTERNAL_ERROR`, `IDEMPOTENCY_KEY_CONFLICT`, `NETWORK_ERROR`, `TIMEOUT`).
+- [x]- [x] **RED:** `packages/shared/src/schemas/common/page.test.ts` — default pagination, out-of-range size, empty result.
+- [x]- [x] **GREEN:** `packages/shared/src/schemas/common/page.ts` (Zod generic `Page<T>`).
+- [x]- [x] **RED:** `packages/shared/src/schemas/common/idempotency-key.test.ts` — UUID v4 validation; missing header is allowed.
+- [x]- [x] **GREEN:** `packages/shared/src/schemas/common/idempotency-key.ts`.
+- [x]- [x] **RED:** `packages/shared/src/domain/money.test.ts` — `Decimal → string → parseInt` round-trip; rejects fractional input.
+- [x]- [x] **GREEN:** `packages/shared/src/domain/money.ts` + `MoneySerializer.ts`.
+- [x]- [x] **RED:** `packages/shared/src/domain/{sku,quantity,reason,email,username,password-hash,role,movement-type,alert-status,order-status,category-name}.test.ts` (one per VO; assert each invariant).
+- [x]- [x] **GREEN:** implement the VOs as plain TS classes / branded types.
+- [x]- [x] **RED:** `packages/shared/test/architecture/no-domain-provider-imports.test.ts` (RED first) — fails on any `import` in `packages/shared/src/*/domain/**` whose path matches `*sdk*` or `*provider*`. (Anticipates the backend pattern from RISK-W06; same shape.)
+- [x]- [x] Wire `@asteasolutions/zod-to-openapi` registry in `packages/shared/src/openapi/registry.ts` and expose `extendZodWithOpenApi(z)`.
+- [x]- [x] Add per-BC schema files under `packages/shared/src/schemas/{auth,products,inventory,alerts,orders,categories}/` (request + response Zod for every route in `design.md` §9).
+- [x]- [x] Add a smoke test asserting every export from `packages/shared/src/index.ts` is reachable (no tree-shaking regression).
 
 **Auth BC** (per `auth/spec.md`):
 
-- [ ] **RED:** `packages/backend/src/auth/domain/user.test.ts` — `User.assertInvariants` rejects short username, rejects non-ADMIN role.
-- [ ] **GREEN:** `domain/user.ts` aggregate (rehydrate + asserts), `domain/value-objects/{username,email,password-hash}.ts`, `domain/errors/{invalid-credentials,rate-limit-exceeded,user-not-found}.ts`.
-- [ ] **RED:** `packages/backend/src/auth/application/login.test.ts` — stubbed ports: valid creds returns JWT, wrong password 401, unknown user 401 (byte-identical), 5 failures → 429, success does NOT increment counter, different `(ip, username)` pairs have independent counters, window expiry resets.
-- [ ] **GREEN:** `application/login.ts` use case.
-- [ ] **RED:** `packages/backend/src/auth/application/login.test.ts` — `PostgresRateLimiter` integration: 5 failures persisted across `prisma.$disconnect()` (per RISK-003) require Vitest + ephemeral Postgres.
-- [ ] **GREEN:** `infrastructure/postgres-rate-limiter.ts` adapter (table `login_attempts(id, ip INET, username, success BOOL, attempted_at)`, partial index on `(ip, username, attempted_at DESC) WHERE success = false`).
-- [ ] **RED:** `packages/backend/src/auth/infrastructure/bcrypt-password-hasher.test.ts` — `bcrypt.hash(plain, 10)` produces `$2[aby]$10$…`; `bcrypt.compare(plain, hash) === true`; rejects wrong password; rejects cost mismatch.
-- [ ] **GREEN:** `infrastructure/bcrypt-password-hasher.ts`.
-- [ ] **RED:** `packages/backend/src/auth/infrastructure/jose-token-issuer.test.ts` + `jose-token-validator.test.ts` — token round-trip; wrong algorithm rejected; expired token rejected.
-- [ ] **GREEN:** `infrastructure/jose-token-issuer.ts` (HS256, 24h, claims `sub`, `username`, `role`, `iat`, `exp`) + `infrastructure/jose-token-validator.ts`.
-- [ ] **RED:** `packages/backend/src/auth/infrastructure/prisma-user-repository.test.ts` — round-trip, `findByUsername`, `findByEmail`.
-- [ ] **GREEN:** `infrastructure/prisma-user-repository.ts`.
-- [ ] **RED:** `packages/backend/src/auth/integration/login-flow.test.ts` (Vitest + testcontainers Postgres) — covers every scenario from `auth/spec.md` end-to-end, including the "two parallel requests share the counter" scenario.
-- [ ] **GREEN:** pass.
-- [ ] **TRIANGULATE:** add 2 more cases per scenario (e.g. UUID-shaped username; bcrypt cost 10 vs 11 distinction; Postgres rate limiter survives multiple `prisma.$disconnect()` cycles).
-- [ ] **REFACTOR:** extract `TokenIssuer` and `TokenValidator` ports to `domain/ports/`.
-- [ ] **RED:** `packages/backend/src/auth/interface/handlers/login.test.ts` — handler test with stubbed use case + Bootstrap returns typed envelope.
-- [ ] **GREEN:** `interface/handlers/login.ts` + `interface/schemas/{login-request,login-response}.ts` + `interface/middleware/error-mapper.ts`.
-- [ ] **RED:** `auth/bootstrap.ts` test — wires all ports + use cases.
-- [ ] **GREEN:** `auth/bootstrap.ts`.
-- [ ] **GREEN:** finalize `packages/backend/prisma/seed.ts` admin user upsert (idempotent on `username`); reads `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` from env; bcrypt cost 10; logs a structured line on success.
-- [ ] **RED:** `packages/backend/test/architecture/cross-bc-bounds.test.ts` (per RISK-W06) — fails if any `packages/backend/src/auth/**` imports from `packages/backend/src/{products,inventory,alerts,orders,categories}/infrastructure/`.
-- [ ] **GREEN:** make the test pass.
-- [ ] Wire `auth-lambda` handler to API Gateway `POST /api/v1/auth/login` in `ApiStack.ts` (add a CDK construct test for the route).
+- [x]- [x] **RED:** `packages/backend/src/auth/domain/user.test.ts` — `User.assertInvariants` rejects short username, rejects non-ADMIN role.
+- [x]- [x] **GREEN:** `domain/user.ts` aggregate (rehydrate + asserts), `domain/value-objects/{username,email,password-hash}.ts`, `domain/errors/{invalid-credentials,rate-limit-exceeded,user-not-found}.ts`.
+- [x]- [x] **RED:** `packages/backend/src/auth/application/login.test.ts` — stubbed ports: valid creds returns JWT, wrong password 401, unknown user 401 (byte-identical), 5 failures → 429, success does NOT increment counter, different `(ip, username)` pairs have independent counters, window expiry resets.
+- [x]- [x] **GREEN:** `application/login.ts` use case.
+- [x]- [x] **RED:** `packages/backend/src/auth/application/login.test.ts` — `PostgresRateLimiter` integration: 5 failures persisted across `prisma.$disconnect()` (per RISK-003) require Vitest + ephemeral Postgres.
+- [x]- [x] **GREEN:** `infrastructure/postgres-rate-limiter.ts` adapter (table `login_attempts(id, ip INET, username, success BOOL, attempted_at)`, partial index on `(ip, username, attempted_at DESC) WHERE success = false`).
+- [x]- [x] **RED:** `packages/backend/src/auth/infrastructure/bcrypt-password-hasher.test.ts` — `bcrypt.hash(plain, 10)` produces `$2[aby]$10$…`; `bcrypt.compare(plain, hash) === true`; rejects wrong password; rejects cost mismatch.
+- [x]- [x] **GREEN:** `infrastructure/bcrypt-password-hasher.ts`.
+- [x]- [x] **RED:** `packages/backend/src/auth/infrastructure/jose-token-issuer.test.ts` + `jose-token-validator.test.ts` — token round-trip; wrong algorithm rejected; expired token rejected.
+- [x]- [x] **GREEN:** `infrastructure/jose-token-issuer.ts` (HS256, 24h, claims `sub`, `username`, `role`, `iat`, `exp`) + `infrastructure/jose-token-validator.ts`.
+- [x]- [x] **RED:** `packages/backend/src/auth/infrastructure/prisma-user-repository.test.ts` — round-trip, `findByUsername`, `findByEmail`.
+- [x]- [x] **GREEN:** `infrastructure/prisma-user-repository.ts`.
+- [x]- [x] **RED:** `packages/backend/src/auth/integration/login-flow.test.ts` (Vitest + testcontainers Postgres) — covers every scenario from `auth/spec.md` end-to-end, including the "two parallel requests share the counter" scenario.
+- [x]- [x] **GREEN:** pass.
+- [x]- [x] **TRIANGULATE:** add 2 more cases per scenario (e.g. UUID-shaped username; bcrypt cost 10 vs 11 distinction; Postgres rate limiter survives multiple `prisma.$disconnect()` cycles).
+- [x]- [x] **REFACTOR:** extract `TokenIssuer` and `TokenValidator` ports to `domain/ports/`.
+- [x]- [x] **RED:** `packages/backend/src/auth/interface/handlers/login.test.ts` — handler test with stubbed use case + Bootstrap returns typed envelope.
+- [x]- [x] **GREEN:** `interface/handlers/login.ts` + `interface/schemas/{login-request,login-response}.ts` + `interface/middleware/error-mapper.ts`.
+- [x]- [x] **RED:** `auth/bootstrap.ts` test — wires all ports + use cases.
+- [x]- [x] **GREEN:** `auth/bootstrap.ts`.
+- [x]- [x] **GREEN:** finalize `packages/backend/prisma/seed.ts` admin user upsert (idempotent on `username`); reads `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` from env; bcrypt cost 10; logs a structured line on success.
+- [x]- [x] **RED:** `packages/backend/test/architecture/cross-bc-bounds.test.ts` (per RISK-W06) — fails if any `packages/backend/src/auth/**` imports from `packages/backend/src/{products,inventory,alerts,orders,categories}/infrastructure/`.
+- [x]- [x] **GREEN:** make the test pass.
+- [x]- [x] Wire `auth-lambda` handler to API Gateway `POST /api/v1/auth/login` in `ApiStack.ts` (add a CDK construct test for the route).
 
 **Products BC** (per `products/spec.md`):
 
-- [ ] **RED:** `packages/backend/src/products/domain/product.test.ts` — invariants: name 3–100 chars, sku `[A-Za-z0-9]{6,20}`, price `> 0`, stock `>= 0`, stockMin `> 0`, supplier 1–120 chars, categoryId UUID; `Product.assertInvariants` rejects each violation.
-- [ ] **GREEN:** `domain/product.ts` + VOs (`SKU`, `ProductName`, `SupplierName`, `CategoryId`, `Stock`, `StockMin`).
-- [ ] **RED:** `packages/backend/src/products/domain/errors/{sku-already-exists,category-not-found,product-not-found}.test.ts` (one typed error per file).
-- [ ] **GREEN:** error files.
-- [ ] **RED:** `packages/backend/src/products/domain/ports/{product-repository,category-read-repository}.test.ts` (interface contracts).
-- [ ] **RED:** `packages/backend/src/products/application/create-product.test.ts` — happy path; SKU collision 409; bad categoryId 422; price = 0 400; sku = "ab" 400.
-- [ ] **GREEN:** `application/create-product.ts`.
-- [ ] **RED:** `packages/backend/src/products/application/list-products.test.ts` — no filters, filter by categoryId, filter by supplier, `hasActiveAlert=true` (joins via read-repository), `minStock`/`maxStock` range, AND composition, pagination metadata.
-- [ ] **GREEN:** `application/list-products.ts`.
-- [ ] **RED:** `packages/backend/src/products/application/{get-product,update-product}.test.ts` — happy + 404 + forbidden field (`sku`, `stock`, `id` rejected in update body).
-- [ ] **GREEN:** `application/{get-product,update-product}.ts`.
-- [ ] **RED:** `packages/backend/src/products/infrastructure/prisma-product-repository.test.ts` — `create` + `findBySku` conflict mapping to `SkuAlreadyExistsError`, `findById` not-found, `update` mapping.
-- [ ] **GREEN:** `infrastructure/prisma-product-repository.ts`.
-- [ ] **RED:** `packages/backend/src/products/infrastructure/prisma-category-read-repository.test.ts` — `findById` returns category or null.
-- [ ] **GREEN:** `infrastructure/prisma-category-read-repository.ts`.
-- [ ] **RED:** `packages/backend/src/products/integration/create-product-flow.test.ts` (Vitest + ephemeral Postgres) — full HTTP handler path; SKU race test (two concurrent creates, exactly one 201 + one 409).
-- [ ] **GREEN:** pass.
-- [ ] **TRIANGULATE:** add 2 more cases per use case (e.g. update with same body returns 200 unchanged — RISK-S02; stock field rejection on update; categoryId format invalid).
-- [ ] **REFACTOR:** extract `Money` serialization to a shared response mapper; extract `Product.toReadModel()` for consistent JSON shape.
-- [ ] **RED:** `packages/backend/src/products/interface/handlers/{create-product,list-products,get-product,update-product}.test.ts` — handler tests asserting envelope shape, status codes, and validation error mapping.
-- [ ] **GREEN:** handlers + schemas.
-- [ ] **RED:** `products/bootstrap.ts` test.
-- [ ] **GREEN:** `products/bootstrap.ts`.
-- [ ] Wire `products-lambda` + `categories-lambda` (which is hosted inside `products-lambda` per `design.md` §2.1) into `ApiStack.ts`. Add a CDK construct test for the routes (`POST /products`, `GET /products`, `GET /products/{id}`, `PATCH /products/{id}`, `GET /categories`, `POST /categories`).
-- [ ] **RED:** `packages/backend/test/architecture/cross-bc-bounds.test.ts` — extend to forbid any other BC importing `products/infrastructure/` (RISK-W06).
-- [ ] **GREEN:** extend the test, ensure the build passes.
+- [x]- [x] **RED:** `packages/backend/src/products/domain/product.test.ts` — invariants: name 3–100 chars, sku `[A-Za-z0-9]{6,20}`, price `> 0`, stock `>= 0`, stockMin `> 0`, supplier 1–120 chars, categoryId UUID; `Product.assertInvariants` rejects each violation.
+- [x]- [x] **GREEN:** `domain/product.ts` + VOs (`SKU`, `ProductName`, `SupplierName`, `CategoryId`, `Stock`, `StockMin`).
+- [x]- [x] **RED:** `packages/backend/src/products/domain/errors/{sku-already-exists,category-not-found,product-not-found}.test.ts` (one typed error per file).
+- [x]- [x] **GREEN:** error files.
+- [x]- [x] **RED:** `packages/backend/src/products/domain/ports/{product-repository,category-read-repository}.test.ts` (interface contracts).
+- [x]- [x] **RED:** `packages/backend/src/products/application/create-product.test.ts` — happy path; SKU collision 409; bad categoryId 422; price = 0 400; sku = "ab" 400.
+- [x]- [x] **GREEN:** `application/create-product.ts`.
+- [x]- [x] **RED:** `packages/backend/src/products/application/list-products.test.ts` — no filters, filter by categoryId, filter by supplier, `hasActiveAlert=true` (joins via read-repository), `minStock`/`maxStock` range, AND composition, pagination metadata.
+- [x]- [x] **GREEN:** `application/list-products.ts`.
+- [x]- [x] **RED:** `packages/backend/src/products/application/{get-product,update-product}.test.ts` — happy + 404 + forbidden field (`sku`, `stock`, `id` rejected in update body).
+- [x]- [x] **GREEN:** `application/{get-product,update-product}.ts`.
+- [x]- [x] **RED:** `packages/backend/src/products/infrastructure/prisma-product-repository.test.ts` — `create` + `findBySku` conflict mapping to `SkuAlreadyExistsError`, `findById` not-found, `update` mapping.
+- [x]- [x] **GREEN:** `infrastructure/prisma-product-repository.ts`.
+- [x]- [x] **RED:** `packages/backend/src/products/infrastructure/prisma-category-read-repository.test.ts` — `findById` returns category or null.
+- [x]- [x] **GREEN:** `infrastructure/prisma-category-read-repository.ts`.
+- [x]- [x] **RED:** `packages/backend/src/products/integration/create-product-flow.test.ts` (Vitest + ephemeral Postgres) — full HTTP handler path; SKU race test (two concurrent creates, exactly one 201 + one 409).
+- [x]- [x] **GREEN:** pass.
+- [x]- [x] **TRIANGULATE:** add 2 more cases per use case (e.g. update with same body returns 200 unchanged — RISK-S02; stock field rejection on update; categoryId format invalid).
+- [x]- [x] **REFACTOR:** extract `Money` serialization to a shared response mapper; extract `Product.toReadModel()` for consistent JSON shape.
+- [x]- [x] **RED:** `packages/backend/src/products/interface/handlers/{create-product,list-products,get-product,update-product}.test.ts` — handler tests asserting envelope shape, status codes, and validation error mapping.
+- [x]- [x] **GREEN:** handlers + schemas.
+- [x]- [x] **RED:** `products/bootstrap.ts` test.
+- [x]- [x] **GREEN:** `products/bootstrap.ts`.
+- [x]- [x] Wire `products-lambda` + `categories-lambda` (which is hosted inside `products-lambda` per `design.md` §2.1) into `ApiStack.ts`. Add a CDK construct test for the routes (`POST /products`, `GET /products`, `GET /products/{id}`, `PATCH /products/{id}`, `GET /categories`, `POST /categories`).
+- [x]- [x] **RED:** `packages/backend/test/architecture/cross-bc-bounds.test.ts` — extend to forbid any other BC importing `products/infrastructure/` (RISK-W06).
+- [x]- [x] **GREEN:** extend the test, ensure the build passes.
 
 **Work-unit commits** (one logical group per commit):
 
@@ -297,40 +297,40 @@ Five PR-shaped work units, ordered by dependency. Each has a clear start, finish
 
 **Inventory BC** (per `inventory/spec.md`):
 
-- [ ] **RED:** `packages/backend/src/inventory/domain/stock-movement.test.ts` — `applyTo(currentStock)` returns `currentStock + quantity` for `ENTRADA`, `currentStock - quantity` for `SALIDA`; `quantity = 0` rejected; sign derived from `MovementType` (BR-D7, BR-D8).
-- [ ] **GREEN:** `domain/stock-movement.ts` + VOs (`Quantity`, `Reason`).
-- [ ] **RED:** `packages/backend/src/inventory/domain/ports/{stock-movement-repository,product-stock-gate}.test.ts` — interface contracts (append-only per BR-6, no `update`/`delete`).
-- [ ] **RED:** `packages/backend/src/inventory/application/stock-mutation-service.test.ts` — stubbed Prisma client: ENTRADA inserts movement + updates stock; SALIDA below 0 throws `StockWouldGoNegativeError` with `{ currentStock, requested, shortBy }`; no movement row created on rejection; row lock `SELECT … FOR UPDATE` is asserted on the tx; crossing `stock <= stockMin` with no active alert calls `AlertCloserPort.txCloseIfOpenAndAboveMin` when `newStock > stockMin`; concurrent SALIDA integration (per RISK-002) — two parallel calls, exactly one succeeds, other gets `STOCK_WOULD_GO_NEGATIVE`.
-- [ ] **GREEN:** `application/stock-mutation-service.ts` (uses `$queryRaw\`SELECT id, stock, stock_min FROM products WHERE id = $1::uuid FOR UPDATE\`` inside `prisma.$transaction`at`ReadCommitted` per ADR-2).
-- [ ] **RED:** `packages/backend/src/inventory/infrastructure/prisma-product-stock-gate.test.ts` — partial row-lock SQL is asserted; the gate only mutates via the supplied `tx`.
-- [ ] **GREEN:** `infrastructure/prisma-product-stock-gate.ts`.
-- [ ] **RED:** `packages/backend/src/inventory/application/stock-mutation-service.test.ts` — recovery path test (per RISK-001): stock drops to 30, alert opens; subsequent ENTRADA brings stock to 35 → `AlertCloserPort.txCloseIfOpenAndAboveMin` called inside the same tx, alert flips to `RESUELTA` with `resolvedAt` set.
-- [ ] **RED:** `packages/backend/src/inventory/application/stock-mutation-service.test.ts` — failure-rollback test (per RISK-001): stub `AlertCloserPort.txCloseIfOpenAndAboveMin` to throw after the StockMovement insert → entire tx rolls back, no movement persisted.
-- [ ] **RED:** `packages/backend/src/inventory/infrastructure/prisma-stock-movement-repository.test.ts` — `append` + `listByProduct` with page/size ordering by `createdAt DESC`.
-- [ ] **GREEN:** `infrastructure/prisma-stock-movement-repository.ts`.
-- [ ] **TRIANGULATE:** add 3 more cases (page out-of-range; multiple products in history; brand-new product has 0 movements).
-- [ ] **REFACTOR:** extract the `SELECT … FOR UPDATE` raw SQL into a single typed helper `lockProductRow(tx, productId)`; extract the alert-creation `try/catch P2002` swallow to a small `openAlertIfAbsent(tx, productId)` helper.
-- [ ] **RED:** `packages/backend/src/inventory/integration/record-movement-flow.test.ts` (Vitest + ephemeral Postgres) — full HTTP path; BR-1 rejection; BR-6 append-only invariant (no `update`/`delete` methods on the repo).
-- [ ] **RED:** `packages/backend/src/inventory/interface/handlers/{record-movement,list-movements}.test.ts` — handler tests with envelope + validation + `stockAfter` in success body (Q-S1) + `currentStock/requested/shortBy` in `STOCK_WOULD_GO_NEGATIVE` details.
-- [ ] **GREEN:** handlers + schemas + bootstrap.
-- [ ] Wire `inventory-lambda` routes in `ApiStack.ts` (`POST /products/{id}/movements`, `GET /products/{id}/movements`); add CDK construct test.
+- [ ]- [x] **RED:** `packages/backend/src/inventory/domain/stock-movement.test.ts` — `applyTo(currentStock)` returns `currentStock + quantity` for `ENTRADA`, `currentStock - quantity` for `SALIDA`; `quantity = 0` rejected; sign derived from `MovementType` (BR-D7, BR-D8).
+- [ ]- [x] **GREEN:** `domain/stock-movement.ts` + VOs (`Quantity`, `Reason`).
+- [ ]- [x] **RED:** `packages/backend/src/inventory/domain/ports/{stock-movement-repository,product-stock-gate}.test.ts` — interface contracts (append-only per BR-6, no `update`/`delete`).
+- [ ]- [x] **RED:** `packages/backend/src/inventory/application/stock-mutation-service.test.ts` — stubbed Prisma client: ENTRADA inserts movement + updates stock; SALIDA below 0 throws `StockWouldGoNegativeError` with `{ currentStock, requested, shortBy }`; no movement row created on rejection; row lock `SELECT … FOR UPDATE` is asserted on the tx; crossing `stock <= stockMin` with no active alert calls `AlertCloserPort.txCloseIfOpenAndAboveMin` when `newStock > stockMin`; concurrent SALIDA integration (per RISK-002) — two parallel calls, exactly one succeeds, other gets `STOCK_WOULD_GO_NEGATIVE`.
+- [ ]- [x] **GREEN:** `application/stock-mutation-service.ts` (uses `$queryRaw\`SELECT id, stock, stock_min FROM products WHERE id = $1::uuid FOR UPDATE\`` inside `prisma.$transaction`at`ReadCommitted` per ADR-2).
+- [ ]- [x] **RED:** `packages/backend/src/inventory/infrastructure/prisma-product-stock-gate.test.ts` — partial row-lock SQL is asserted; the gate only mutates via the supplied `tx`.
+- [ ]- [x] **GREEN:** `infrastructure/prisma-product-stock-gate.ts`.
+- [ ]- [x] **RED:** `packages/backend/src/inventory/application/stock-mutation-service.test.ts` — recovery path test (per RISK-001): stock drops to 30, alert opens; subsequent ENTRADA brings stock to 35 → `AlertCloserPort.txCloseIfOpenAndAboveMin` called inside the same tx, alert flips to `RESUELTA` with `resolvedAt` set.
+- [ ]- [x] **RED:** `packages/backend/src/inventory/application/stock-mutation-service.test.ts` — failure-rollback test (per RISK-001): stub `AlertCloserPort.txCloseIfOpenAndAboveMin` to throw after the StockMovement insert → entire tx rolls back, no movement persisted.
+- [ ]- [x] **RED:** `packages/backend/src/inventory/infrastructure/prisma-stock-movement-repository.test.ts` — `append` + `listByProduct` with page/size ordering by `createdAt DESC`.
+- [ ]- [x] **GREEN:** `infrastructure/prisma-stock-movement-repository.ts`.
+- [ ]- [x] **TRIANGULATE:** add 3 more cases (page out-of-range; multiple products in history; brand-new product has 0 movements).
+- [ ]- [x] **REFACTOR:** extract the `SELECT … FOR UPDATE` raw SQL into a single typed helper `lockProductRow(tx, productId)`; extract the alert-creation `try/catch P2002` swallow to a small `openAlertIfAbsent(tx, productId)` helper.
+- [ ]- [x] **RED:** `packages/backend/src/inventory/integration/record-movement-flow.test.ts` (Vitest + ephemeral Postgres) — full HTTP path; BR-1 rejection; BR-6 append-only invariant (no `update`/`delete` methods on the repo).
+- [ ]- [x] **RED:** `packages/backend/src/inventory/interface/handlers/{record-movement,list-movements}.test.ts` — handler tests with envelope + validation + `stockAfter` in success body (Q-S1) + `currentStock/requested/shortBy` in `STOCK_WOULD_GO_NEGATIVE` details.
+- [ ]- [x] **GREEN:** handlers + schemas + bootstrap.
+- [ ]- [x] Wire `inventory-lambda` routes in `ApiStack.ts` (`POST /products/{id}/movements`, `GET /products/{id}/movements`); add CDK construct test.
 
 **Alerts BC** (per `alerts/spec.md`):
 
-- [ ] **RED:** `packages/backend/src/alerts/domain/alert.test.ts` — invariants: `status ∈ {ACTIVA, RESUELTA}`; `type = STOCK_BAJO`; `resolvedAt` set iff `status = RESUELTA` (BR-4 partial unique index is the DB-level guarantee; the domain VO validates the type).
-- [ ] **GREEN:** `domain/alert.ts` + VOs.
-- [ ] **RED:** `packages/backend/src/alerts/domain/ports/{alert-repository,alert-closer-port}.test.ts` — interface contracts; `AlertCloserPort.txCloseIfOpenAndAboveMin` is a NO-OP when no active alert exists (idempotent).
-- [ ] **RED:** `packages/backend/src/alerts/infrastructure/prisma-alert-closer-port.test.ts` — UPDATE statement uses the partial-unique-safe `WHERE product_id = $1 AND status = 'ACTIVA' RETURNING id` (per RISK-001).
-- [ ] **GREEN:** `infrastructure/prisma-alert-closer-port.ts`.
-- [ ] **RED:** `packages/backend/src/alerts/application/list-alerts.test.ts` — filter by status; default `BOTH`; pagination metadata; invalid status 400.
-- [ ] **GREEN:** `application/list-alerts.ts`.
-- [ ] **RED:** `packages/backend/src/alerts/application/get-alert.test.ts` — happy ACTIVA (no `resolvedAt`), happy RESUELTA (with `resolvedAt`), 404 unknown id.
-- [ ] **GREEN:** `application/get-alert.ts`.
-- [ ] **RED:** `packages/backend/src/alerts/infrastructure/prisma-alert-repository.test.ts` — read-side (no manual create/update/delete — manual creation is forbidden per `alerts/spec.md`).
-- [ ] **RED:** `packages/backend/src/alerts/interface/handlers/{list-alerts,get-alert}.test.ts` — handler tests with envelope + product snapshot + `resolvedAt` only when RESUELTA.
-- [ ] **GREEN:** handlers + schemas + bootstrap.
-- [ ] Wire `alerts-lambda` routes in `ApiStack.ts`; CDK construct test for the two routes + absence of POST/PUT/PATCH/DELETE under `/alerts`.
-- [ ] **GREEN:** remove the `InProcessEventBus` reference (per RISK-001, the bus is removed from the manifest; this is an explicit deletion).
+- [ ]- [x] **RED:** `packages/backend/src/alerts/domain/alert.test.ts` — invariants: `status ∈ {ACTIVA, RESUELTA}`; `type = STOCK_BAJO`; `resolvedAt` set iff `status = RESUELTA` (BR-4 partial unique index is the DB-level guarantee; the domain VO validates the type).
+- [ ]- [x] **GREEN:** `domain/alert.ts` + VOs.
+- [ ]- [x] **RED:** `packages/backend/src/alerts/domain/ports/{alert-repository,alert-closer-port}.test.ts` — interface contracts; `AlertCloserPort.txCloseIfOpenAndAboveMin` is a NO-OP when no active alert exists (idempotent).
+- [ ]- [x] **RED:** `packages/backend/src/alerts/infrastructure/prisma-alert-closer-port.test.ts` — UPDATE statement uses the partial-unique-safe `WHERE product_id = $1 AND status = 'ACTIVA' RETURNING id` (per RISK-001).
+- [ ]- [x] **GREEN:** `infrastructure/prisma-alert-closer-port.ts`.
+- [ ]- [x] **RED:** `packages/backend/src/alerts/application/list-alerts.test.ts` — filter by status; default `BOTH`; pagination metadata; invalid status 400.
+- [ ]- [x] **GREEN:** `application/list-alerts.ts`.
+- [ ]- [x] **RED:** `packages/backend/src/alerts/application/get-alert.test.ts` — happy ACTIVA (no `resolvedAt`), happy RESUELTA (with `resolvedAt`), 404 unknown id.
+- [ ]- [x] **GREEN:** `application/get-alert.ts`.
+- [ ]- [x] **RED:** `packages/backend/src/alerts/infrastructure/prisma-alert-repository.test.ts` — read-side (no manual create/update/delete — manual creation is forbidden per `alerts/spec.md`).
+- [ ]- [x] **RED:** `packages/backend/src/alerts/interface/handlers/{list-alerts,get-alert}.test.ts` — handler tests with envelope + product snapshot + `resolvedAt` only when RESUELTA.
+- [ ]- [x] **GREEN:** handlers + schemas + bootstrap.
+- [ ]- [x] Wire `alerts-lambda` routes in `ApiStack.ts`; CDK construct test for the two routes + absence of POST/PUT/PATCH/DELETE under `/alerts`.
+- [ ]- [x] **GREEN:** remove the `InProcessEventBus` reference (per RISK-001, the bus is removed from the manifest; this is an explicit deletion).
 
 **Work-unit commits**:
 
@@ -371,14 +371,14 @@ Five PR-shaped work units, ordered by dependency. Each has a clear start, finish
 
 **Tasks checklist**:
 
-- [ ] **RED:** `packages/backend/src/orders/domain/purchase-order.test.ts` — invariants: status transitions per BR-5; `OrderQuantity >= 2 * stockMin`; `RejectionReason.length >= 10`; `supplierSnapshot` is write-once (Q-P3); `fromAlertId` (when present) must reference an `ACTIVA` alert for the same productId.
-- [ ] **GREEN:** `domain/purchase-order.ts` + VOs (`OrderQuantity`, `RejectionReason`, `SupplierSnapshot`).
-- [ ] **RED:** `packages/backend/src/orders/domain/errors/{order-invalid-transition,rejection-reason-too-short,order-qty-below-policy,alert-not-active}.test.ts`.
-- [ ] **RED:** `packages/backend/src/orders/domain/ports/{order-repository,product-read-repository,alert-read-repository,product-stock-gate,alert-closer-port}.test.ts` (port interfaces only; concrete adapters live in `infrastructure/`).
-- [ ] **RED:** `packages/backend/src/orders/application/create-order.test.ts` — happy manual; happy with `fromAlertId`; 422 `ORDER_QTY_BELOW_POLICY`; 422 `ALERT_NOT_ACTIVE` (alert RESUELTA, alert for different product, alert missing); supplier snapshot copied from `Product.supplier` at create time and never refreshed (Q-P3 — assert on UPDATE that the field is untouched).
-- [ ] **GREEN:** `application/create-order.ts`.
-- [ ] **RED:** `packages/backend/src/orders/application/approve-order.test.ts` — happy PENDIENTE → APROBADA; 409 on any other current state (BR-D1).
-- [ ] **GREEN:** `application/approve-order.ts`.
+- [ ]- [x] **RED:** `packages/backend/src/orders/domain/purchase-order.test.ts` — invariants: status transitions per BR-5; `OrderQuantity >= 2 * stockMin`; `RejectionReason.length >= 10`; `supplierSnapshot` is write-once (Q-P3); `fromAlertId` (when present) must reference an `ACTIVA` alert for the same productId.
+- [ ]- [x] **GREEN:** `domain/purchase-order.ts` + VOs (`OrderQuantity`, `RejectionReason`, `SupplierSnapshot`).
+- [ ]- [x] **RED:** `packages/backend/src/orders/domain/errors/{order-invalid-transition,rejection-reason-too-short,order-qty-below-policy,alert-not-active}.test.ts`.
+- [ ]- [x] **RED:** `packages/backend/src/orders/domain/ports/{order-repository,product-read-repository,alert-read-repository,product-stock-gate,alert-closer-port}.test.ts` (port interfaces only; concrete adapters live in `infrastructure/`).
+- [ ]- [x] **RED:** `packages/backend/src/orders/application/create-order.test.ts` — happy manual; happy with `fromAlertId`; 422 `ORDER_QTY_BELOW_POLICY`; 422 `ALERT_NOT_ACTIVE` (alert RESUELTA, alert for different product, alert missing); supplier snapshot copied from `Product.supplier` at create time and never refreshed (Q-P3 — assert on UPDATE that the field is untouched).
+- [ ]- [x] **GREEN:** `application/create-order.ts`.
+- [ ]- [x] **RED:** `packages/backend/src/orders/application/approve-order.test.ts` — happy PENDIENTE → APROBADA; 409 on any other current state (BR-D1).
+- [ ]- [x] **GREEN:** `application/approve-order.ts`.
 - [ ] **RED:** `packages/backend/src/orders/application/reject-order.test.ts` — happy PENDIENTE → RECHAZADA with reason; 422 on reason < 10 chars; 409 on wrong current state (BR-D2).
 - [ ] **GREEN:** `application/reject-order.ts`.
 - [ ] **RED:** `packages/backend/src/orders/application/receive-order.test.ts` — the **four-step atomic flow** (per ADR-3):

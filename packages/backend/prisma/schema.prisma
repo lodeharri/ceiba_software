@@ -1,0 +1,106 @@
+// Prisma schema for the MercadoExpress MVP (PR 2a, design.md §4).
+//
+// Tables scoped to PR 2a:
+//   - users                  (auth BC)
+//   - categories             (categories BC, D2 lookup)
+//   - products               (products BC)
+//   - login_attempts         (auth BC — RISK-003 Postgres rate limiter)
+//   - idempotency_keys       (shared — RISK-W05)
+//
+// Tables deferred to PR 2b/2c: stock_movements, alerts, purchase_orders.
+// They will be appended via additive migrations (proposal §11.3 rollback contract).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+}
+
+enum MovementType {
+  ENTRADA
+  SALIDA
+}
+
+enum AlertStatus {
+  ACTIVA
+  RESUELTA
+}
+
+enum OrderStatus {
+  PENDIENTE
+  APROBADA
+  RECHAZADA
+  RECIBIDA
+}
+
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String   @unique
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  role         Role     @default(admin)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([username])
+  @@map("users")
+}
+
+model Category {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sku        String   @unique
+  name       String
+  categoryId String   @map("category_id") @db.Uuid
+  price      Decimal  @db.Decimal(12, 0)
+  stock      Int      @default(0)
+  stockMin   Int      @map("stock_min")
+  supplier   String
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@index([categoryId])
+  @@index([supplier])
+  @@index([stock])
+  @@map("products")
+}
+
+model LoginAttempt {
+  id          BigInt   @id @default(autoincrement())
+  ip          String   @db.Inet
+  username    String
+  success     Boolean
+  attemptedAt DateTime @default(now()) @map("attempted_at") @db.Timestamptz(6)
+
+  @@index([ip, username, attemptedAt(sort: Desc)], map: "login_attempts_ip_username_failure_idx")
+  @@map("login_attempts")
+}
+
+model IdempotencyKey {
+  key            String   @id
+  userId         String   @map("user_id") @db.Uuid
+  requestHash    String   @map("request_hash")
+  responseStatus Int      @map("response_status")
+  responseBody   Json     @map("response_body")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt])
+  @@map("idempotency_keys")
+}

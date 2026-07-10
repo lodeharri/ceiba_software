@@ -1,3 +1,8 @@
+import type {
+  APIGatewayProxyEventV2,
+  APIGatewayProxyResultV2,
+  Context as LambdaContext,
+} from 'aws-lambda';
 /**
  * RED-first handler test for `POST /api/v1/categories` (PR 2a).
  */
@@ -12,7 +17,9 @@ const mockGetCategoriesBootstrap = vi.fn(() => ({
   createCategory: { execute: mockExecute } as unknown as CreateCategoryUseCase,
 }));
 
-vi.mock('../../bootstrap.js', () => ({ getCategoriesBootstrap: () => mockGetCategoriesBootstrap() }));
+vi.mock('../../bootstrap.js', () => ({
+  getCategoriesBootstrap: () => mockGetCategoriesBootstrap(),
+}));
 
 const importHandler = async () => (await import('./create-category.js')).handler;
 
@@ -22,7 +29,7 @@ function asJson(r: APIGatewayProxyResultV2): JsonResult {
   return r as JsonResult;
 }
 
-function makeEvent(body: unknown): import('aws-lambda').APIGatewayProxyEventV2 {
+function makeEvent(body: unknown): APIGatewayProxyEventV2 {
   return {
     version: '2.0',
     routeKey: 'POST /api/v1/categories',
@@ -48,7 +55,7 @@ function makeEvent(body: unknown): import('aws-lambda').APIGatewayProxyEventV2 {
     },
     body: typeof body === 'string' ? body : JSON.stringify(body),
     isBase64Encoded: false,
-  } as unknown as import('aws-lambda').APIGatewayProxyEventV2;
+  } as unknown as APIGatewayProxyEventV2;
 }
 
 const lambdaCtx = {
@@ -64,7 +71,7 @@ const lambdaCtx = {
   done: () => undefined,
   fail: () => undefined,
   succeed: () => undefined,
-} as unknown as import('aws-lambda').Context;
+} as unknown as LambdaContext;
 
 describe('POST /api/v1/categories handler', () => {
   beforeEach(() => {
@@ -106,9 +113,7 @@ describe('POST /api/v1/categories handler', () => {
 
   it('returns 400 when name is shorter than 2 chars', async () => {
     const handler = await importHandler();
-    const result = asJson(
-      await handler(makeEvent({ name: 'A' }), lambdaCtx, () => undefined),
-    );
+    const result = asJson(await handler(makeEvent({ name: 'A' }), lambdaCtx, () => undefined));
     expect(result.statusCode).toBe(400);
     const body = JSON.parse(result.body);
     expect(body.code).toBe('VALIDATION_ERROR');
@@ -116,9 +121,7 @@ describe('POST /api/v1/categories handler', () => {
 
   it('returns 400 when body is missing the name field', async () => {
     const handler = await importHandler();
-    const result = asJson(
-      await handler(makeEvent({}), lambdaCtx, () => undefined),
-    );
+    const result = asJson(await handler(makeEvent({}), lambdaCtx, () => undefined));
     expect(result.statusCode).toBe(400);
     const body = JSON.parse(result.body);
     expect(body.code).toBe('VALIDATION_ERROR');

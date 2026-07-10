@@ -1,3 +1,8 @@
+import type {
+  APIGatewayProxyEventV2,
+  APIGatewayProxyResultV2,
+  Context as LambdaContext,
+} from 'aws-lambda';
 /**
  * RED-first handler test for `GET /api/v1/categories` (PR 2a).
  */
@@ -11,7 +16,9 @@ const mockGetCategoriesBootstrap = vi.fn(() => ({
   listCategories: { execute: mockExecute } as unknown as ListCategoriesUseCase,
 }));
 
-vi.mock('../../bootstrap.js', () => ({ getCategoriesBootstrap: () => mockGetCategoriesBootstrap() }));
+vi.mock('../../bootstrap.js', () => ({
+  getCategoriesBootstrap: () => mockGetCategoriesBootstrap(),
+}));
 
 const importHandler = async () => (await import('./list-categories.js')).handler;
 
@@ -21,7 +28,7 @@ function asJson(r: APIGatewayProxyResultV2): JsonResult {
   return r as JsonResult;
 }
 
-function makeEvent(): import('aws-lambda').APIGatewayProxyEventV2 {
+function makeEvent(): APIGatewayProxyEventV2 {
   return {
     version: '2.0',
     routeKey: 'GET /api/v1/categories',
@@ -47,7 +54,7 @@ function makeEvent(): import('aws-lambda').APIGatewayProxyEventV2 {
     },
     body: undefined,
     isBase64Encoded: false,
-  } as unknown as import('aws-lambda').APIGatewayProxyEventV2;
+  } as unknown as APIGatewayProxyEventV2;
 }
 
 const lambdaCtx = {
@@ -63,7 +70,7 @@ const lambdaCtx = {
   done: () => undefined,
   fail: () => undefined,
   succeed: () => undefined,
-} as unknown as import('aws-lambda').Context;
+} as unknown as LambdaContext;
 
 describe('GET /api/v1/categories handler', () => {
   beforeEach(() => {
@@ -75,8 +82,16 @@ describe('GET /api/v1/categories handler', () => {
 
   it('returns 200 with the categories envelope', async () => {
     mockExecute.mockResolvedValueOnce([
-      { toReadModel: () => ({ id: 'cat-1', name: 'Bebidas', createdAt: '2026-01-01T00:00:00.000Z' }) },
-      { toReadModel: () => ({ id: 'cat-2', name: 'Snacks', createdAt: '2026-01-01T00:00:00.000Z' }) },
+      {
+        toReadModel: () => ({
+          id: 'cat-1',
+          name: 'Bebidas',
+          createdAt: '2026-01-01T00:00:00.000Z',
+        }),
+      },
+      {
+        toReadModel: () => ({ id: 'cat-2', name: 'Snacks', createdAt: '2026-01-01T00:00:00.000Z' }),
+      },
     ]);
     const handler = await importHandler();
     const result = asJson(await handler(makeEvent(), lambdaCtx, () => undefined));

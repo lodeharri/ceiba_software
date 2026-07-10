@@ -2,10 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { UpdateProductUseCase, type UpdateProductInput } from './update-product.js';
 import { CategoryNotFoundError } from '../domain/errors/category-not-found.js';
 import { ProductNotFoundError } from '../domain/errors/product-not-found.js';
-import type {
-  ProductRepository,
-  ProductProps,
-} from '../domain/ports/product-repository.js';
+import type { ProductRepository, ProductProps } from '../domain/ports/product-repository.js';
 import type { CategoryReadRepository } from '../domain/ports/category-repository.js';
 
 const ID = '11111111-1111-4111-8111-111111111111';
@@ -25,11 +22,13 @@ const ROW: ProductProps = {
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
 };
 
-function makeRepos(opts: {
-  existing?: ProductProps | null;
-  existingCategory?: { id: string; name: string } | null;
-  secondCategory?: { id: string; name: string } | null;
-} = {}): {
+function makeRepos(
+  opts: {
+    existing?: ProductProps | null;
+    existingCategory?: { id: string; name: string } | null;
+    secondCategory?: { id: string; name: string } | null;
+  } = {},
+): {
   products: ProductRepository;
   categories: CategoryReadRepository;
   updatedCalls: Array<{ id: string; patch: UpdateProductInput }>;
@@ -109,9 +108,7 @@ describe('UpdateProductUseCase', () => {
   it('throws ProductNotFoundError when the product does not exist', async () => {
     const { products, categories } = makeRepos({ existing: null });
     const useCase = new UpdateProductUseCase(products, categories);
-    await expect(useCase.execute(ID, { name: 'x' })).rejects.toBeInstanceOf(
-      ProductNotFoundError,
-    );
+    await expect(useCase.execute(ID, { name: 'x' })).rejects.toBeInstanceOf(ProductNotFoundError);
   });
 
   it('throws CategoryNotFoundError when categoryId does not exist', async () => {
@@ -120,8 +117,8 @@ describe('UpdateProductUseCase', () => {
       secondCategory: null,
     });
     const useCase = new UpdateProductUseCase(products, categories);
-    await expect(
-      useCase.execute(ID, { categoryId: CAT2 }),
-    ).rejects.toBeInstanceOf(CategoryNotFoundError);
+    await expect(useCase.execute(ID, { categoryId: CAT2 })).rejects.toBeInstanceOf(
+      CategoryNotFoundError,
+    );
   });
 });
