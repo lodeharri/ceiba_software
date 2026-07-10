@@ -49,4 +49,11 @@ export interface OrderRepository {
    * MUST be called inside an existing `prisma.$transaction`.
    */
   txUpdate(tx: unknown, id: string, status: OrderStatusFilter): Promise<PurchaseOrderProps>;
+
+  /**
+   * Find order by ID inside a supplied Prisma transaction.
+   * Used by receive-order flow to prevent TOCTOU race conditions.
+   * MUST be called inside an existing `prisma.$transaction`.
+   */
+  findByIdTx(tx: unknown, id: string): Promise<PurchaseOrderProps | null>;
 }

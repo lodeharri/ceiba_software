@@ -50,6 +50,11 @@ describe('ReceiveOrderUseCase — four-step atomic flow (ADR-3)', () => {
       async findById() {
         return makeOrder('APROBADA');
       },
+      async findByIdTx(_tx, id) {
+        void _tx;
+        void id;
+        return makeOrder('APROBADA');
+      },
       async list() {
         throw new Error('not used');
       },
@@ -112,6 +117,11 @@ describe('ReceiveOrderUseCase — four-step atomic flow (ADR-3)', () => {
       async findById() {
         return makeOrder('APROBADA');
       },
+      async findByIdTx(_tx, id) {
+        void _tx;
+        void id;
+        return makeOrder('APROBADA');
+      },
       async list() {
         throw new Error('not used');
       },
@@ -169,6 +179,11 @@ describe('ReceiveOrderUseCase — four-step atomic flow (ADR-3)', () => {
       async findById() {
         return makeOrder('RECIBIDA');
       },
+      async findByIdTx(_tx, id) {
+        void _tx;
+        void id;
+        return makeOrder('RECIBIDA');
+      },
       async list() {
         throw new Error('not used');
       },
@@ -200,6 +215,11 @@ describe('ReceiveOrderUseCase — four-step atomic flow (ADR-3)', () => {
         throw new Error('not used');
       },
       async findById() {
+        return makeOrder('APROBADA');
+      },
+      async findByIdTx(_tx, id) {
+        void _tx;
+        void id;
         return makeOrder('APROBADA');
       },
       async list() {
@@ -253,6 +273,11 @@ describe('ReceiveOrderUseCase — four-step atomic flow (ADR-3)', () => {
         throw new Error('not used');
       },
       async findById() {
+        return makeOrder('PENDIENTE');
+      },
+      async findByIdTx(_tx, id) {
+        void _tx;
+        void id;
         return makeOrder('PENDIENTE');
       },
       async list() {

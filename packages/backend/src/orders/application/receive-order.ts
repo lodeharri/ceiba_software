@@ -52,20 +52,20 @@ export class ReceiveOrderUseCase {
   ) {}
 
   async execute(orderId: string, reason: string, userId: string): Promise<ReceiveOrderResult> {
-    // Step 1: Validate state machine pre-condition
-    const order = await this.orderRepo.findById(orderId);
-    if (!order) {
-      throw new OrderNotFoundError(orderId);
-    }
-    if (order.status !== 'APROBADA') {
-      throw new OrderInvalidTransitionError(order.status, 'receive');
-    }
-
-    // Steps 2-4 inside one atomic transaction
+    // All steps inside one atomic transaction to prevent TOCTOU race conditions
     return this.prisma
       .$transaction(
         async (txRaw) => {
           const tx = txRaw as TxClient;
+
+          // Step 1: Find and validate state machine pre-condition inside tx
+          const order = await this.orderRepo.findByIdTx(tx, orderId);
+          if (!order) {
+            throw new OrderNotFoundError(orderId);
+          }
+          if (order.status !== 'APROBADA') {
+            throw new OrderInvalidTransitionError(order.status, 'receive');
+          }
 
           // Step 2: txUpdate order to RECIBIDA
           const updatedOrder = await this.orderRepo.txUpdate(tx, orderId, 'RECIBIDA');

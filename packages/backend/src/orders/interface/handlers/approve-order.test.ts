@@ -6,13 +6,18 @@ import { describe, expect, it, vi } from 'vitest';
 import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 
 const O = '11111111-1111-1111-1111-111111111111';
+const U = '33333333-3333-3333-3333-333333333333';
+
+// Mock JWT with valid structure (base64url-encoded payload with sub claim)
+const mockJwtPayload = { sub: U, exp: Math.floor(Date.now() / 1000) + 3600 };
+const mockJwt = `header.${Buffer.from(JSON.stringify(mockJwtPayload)).toString('base64url').replace(/=+$/, '')}.signature`;
 
 function makeEvent(orderId: string = O): APIGatewayProxyEventV2 {
   return {
     requestContext: {
       http: { method: 'POST', path: `/api/v1/orders/${orderId}/approve`, sourceIp: '127.0.0.1' },
     },
-    headers: {},
+    headers: { authorization: `Bearer ${mockJwt}` },
     rawPath: `/api/v1/orders/${orderId}/approve`,
     rawQueryString: '',
     routeKey: 'POST /api/v1/orders/{id}/approve',

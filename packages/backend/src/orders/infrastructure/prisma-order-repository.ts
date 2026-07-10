@@ -87,6 +87,12 @@ export class PrismaOrderRepository implements OrderRepository {
     return row ? rowToProps(row) : null;
   }
 
+  async findByIdTx(tx: unknown, id: string): Promise<PurchaseOrderProps | null> {
+    const client = (tx as TxLike) ?? this.prisma;
+    const row = await client.purchaseOrder.findUnique({ where: { id } });
+    return row ? rowToProps(row) : null;
+  }
+
   async list(opts: ListOrdersOptions): Promise<{
     items: PurchaseOrderProps[];
     page: number;

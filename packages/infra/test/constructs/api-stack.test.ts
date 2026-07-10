@@ -202,31 +202,31 @@ describe('ApiStack', () => {
     expect(templateStr).toContain('AlertsLambda');
     // Assert ABSENCE of POST/PUT/PATCH/DELETE under /alerts — only GET routes
     // Anchor within RouteKey quoted value using [^"]* to avoid cross-field matches
-        expect(templateStr).not.toMatch(/"RouteKey":"(POST|PUT|PATCH|DELETE)[^"]*alerts/);
-      });
+    expect(templateStr).not.toMatch(/"RouteKey":"(POST|PUT|PATCH|DELETE)[^"]*alerts/);
+  });
 
-      it('routes the PR 2c orders endpoints (6 routes: POST+GET /orders, GET /orders/{id}, POST /orders/{id}/approve/reject/receive)', () => {
-        const app = new App();
-        const { ApiStack } = loadApiStackModule();
-        const stack = new ApiStack(app, 'ApiStackTestOrders', {
-          stage: 'dev',
-          distributionDomainName: 'd111111abcdef8.cloudfront.net',
-          databaseUrlSecretArn: 'arn:aws:ssm:us-east-1:000000000000:parameter/db',
-          securityGroupId: 'sg-00000000',
-          env: PLACEHOLDER_ENV,
-        });
-
-        const template = Template.fromStack(stack as unknown as Stack);
-        const templateStr = JSON.stringify(template.toJSON());
-
-        // 6 orders routes.
-        expect(templateStr).toContain('/api/v1/orders');
-        expect(templateStr).toContain('/api/v1/orders/{id}');
-        expect(templateStr).toContain('/api/v1/orders/{id}/approve');
-        expect(templateStr).toContain('/api/v1/orders/{id}/reject');
-        expect(templateStr).toContain('/api/v1/orders/{id}/receive');
-        expect(templateStr).toContain('OrdersLambda');
-        // Orders is the only mutating route in orders BC (no PUT/PATCH/DELETE).
-        expect(templateStr).not.toMatch(/"RouteKey":"(PUT|PATCH|DELETE)[^"]*orders/);
-      });
+  it('routes the PR 2c orders endpoints (6 routes: POST+GET /orders, GET /orders/{id}, POST /orders/{id}/approve/reject/receive)', () => {
+    const app = new App();
+    const { ApiStack } = loadApiStackModule();
+    const stack = new ApiStack(app, 'ApiStackTestOrders', {
+      stage: 'dev',
+      distributionDomainName: 'd111111abcdef8.cloudfront.net',
+      databaseUrlSecretArn: 'arn:aws:ssm:us-east-1:000000000000:parameter/db',
+      securityGroupId: 'sg-00000000',
+      env: PLACEHOLDER_ENV,
     });
+
+    const template = Template.fromStack(stack as unknown as Stack);
+    const templateStr = JSON.stringify(template.toJSON());
+
+    // 6 orders routes.
+    expect(templateStr).toContain('/api/v1/orders');
+    expect(templateStr).toContain('/api/v1/orders/{id}');
+    expect(templateStr).toContain('/api/v1/orders/{id}/approve');
+    expect(templateStr).toContain('/api/v1/orders/{id}/reject');
+    expect(templateStr).toContain('/api/v1/orders/{id}/receive');
+    expect(templateStr).toContain('OrdersLambda');
+    // Orders is the only mutating route in orders BC (no PUT/PATCH/DELETE).
+    expect(templateStr).not.toMatch(/"RouteKey":"(PUT|PATCH|DELETE)[^"]*orders/);
+  });
+});

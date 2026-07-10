@@ -16,6 +16,9 @@ import type {
   APIGatewayProxyResultV2,
   Context as LambdaContext,
 } from 'aws-lambda';
+import { verifyJwt } from '../jwt-middleware.js';
+import { UnauthorizedError } from '../errors/typed-errors.js';
+import { ErrorCode } from '@mercadoexpress/shared';
 
 import { handler as createOrder } from '../../orders/interface/handlers/create-order.js';
 import { handler as listOrders } from '../../orders/interface/handlers/list-orders.js';
@@ -38,10 +41,21 @@ type PerRouteHandler = (
   ctx: LambdaContext,
 ) => Promise<APIGatewayProxyResultV2>;
 
+function extractBearer(event: APIGatewayProxyEventV2): string {
+  const h = event.headers;
+  const raw = (h?.['authorization'] ?? h?.['Authorization']) as string | undefined;
+  if (!raw || !raw.startsWith('Bearer ')) {
+    throw new UnauthorizedError(ErrorCode.INVALID_TOKEN, 'Missing Bearer token');
+  }
+  return raw.slice('Bearer '.length).trim();
+}
+
 export const handler = async (
   event: APIGatewayProxyEventV2,
   lambdaCtx: LambdaContext,
 ): Promise<APIGatewayProxyResultV2> => {
+  const token = extractBearer(event);
+  await verifyJwt(token);
   const key = event.routeKey ?? '';
   // Cast through unknown: the handlers accept (event, ctx) from withRequestContext
   // but the PerRouteHandler signature requires (event, ctx, callback) for
