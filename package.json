@@ -9,6 +9,11 @@
     "node": ">=20",
     "pnpm": ">=9"
   },
+  "pnpm": {
+    "overrides": {
+      "tar": "^7.5.11"
+    }
+  },
   "scripts": {
     "test": "pnpm -r --workspace-concurrency=1 test",
     "test:watch": "pnpm -r --workspace-concurrency=1 test:watch",

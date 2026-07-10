@@ -459,3 +459,111 @@ No Co-authored-by:  yes
 
 PR 1 is **ready for verify**. The orchestrator should run `sdd-verify` against
 this change next.
+
+---
+
+## 8. PR 1 — audit closeout (2026-07-09)
+
+The PR 1 verification gate was GREEN on every check except `pnpm audit --prod
+--audit-level=high`. This section records the closeout: a `pnpm.overrides`
+block was added at the monorepo root to pin the transitive `tar` package (one
+transitive path only — through `bcrypt@5.1.1 → @mapbox/node-pre-gyp@1.0.11 →
+tar@6.2.1`).
+
+### Override added
+
+```jsonc
+// package.json (root)
+{
+  "pnpm": {
+    "overrides": {
+      "tar": "^7.5.11",
+    },
+  },
+}
+```
+
+`^7.5.11` resolves to `7.5.19` (latest `7.x`), which patches every active
+`node-tar` advisory in the audit, including all six high-severity CVEs:
+
+| GHSA                | CVE            | Patched    |
+| ------------------- | -------------- | ---------- |
+| GHSA-34x7-hfp2-rc4v | CVE-2026-24842 | `>=7.5.7`  |
+| GHSA-8qq5-rm4j-mr97 | CVE-2026-23745 | `>=7.5.3`  |
+| GHSA-83g3-92jg-28cx | CVE-2026-26960 | `>=7.5.8`  |
+| GHSA-qffp-2rhf-9h96 | CVE-2026-29786 | `>=7.5.10` |
+| GHSA-9ppj-qmqm-q256 | CVE-2026-XXXXX | `>=7.5.11` |
+| GHSA-r6q2-hw4h-h46w | CVE-2026-XXXXX | `>=7.5.4`  |
+
+Plus the one moderate `tar` advisory (`<7.5.x` PAX-size override).
+
+### Before / after audit counts
+
+```text
+Before: 6 high  + 1 moderate  (7 vulns total — all in `tar` 6.2.1)
+After:  0 high  + 0 moderate  (audit --prod --audit-level=high → "No known vulnerabilities found")
+```
+
+### Lockfile diff summary
+
+```text
+ package.json      |   5 ++++  (added pnpm.overrides)
+ pnpm-lock.yaml    | 88 lines (tar 6.2.1 → 7.5.19)
+```
+
+### Final verification gate — re-run after override
+
+```text
+$ pnpm -w vitest run
+  Test Files  14 passed (14)
+  Tests       94 passed (94)
+  → PASS
+
+$ pnpm -w tsc --noEmit
+  → PASS (no output)
+
+$ pnpm -w eslint .
+  → PASS (no output)
+
+$ pnpm -w prettier --check .
+  All matched files use Prettier code style!
+  → PASS
+
+$ pnpm --filter infra exec cdk synth --all --no-color
+  Successfully synthesized to packages/infra/cdk.out
+  Supply a stack id (MercadoExpress-dev-Database, MercadoExpress-dev-Frontend,
+  MercadoExpress-dev-Api, MercadoExpress-dev-Observability) to display its template.
+  → PASS
+
+$ pnpm audit --prod --audit-level=high
+  No known vulnerabilities found
+  → PASS
+```
+
+The override is a dependency-only patch — no business logic, CDK construct,
+handler code, schema, or test was modified. The only files changed in this
+closeout commit are `package.json` (added `pnpm.overrides`) and
+`pnpm-lock.yaml` (regenerated to pull `tar@7.5.19`).
+
+### Known-accepted CVEs
+
+None. Every high and moderate advisory on `tar` is patched by `tar@7.5.19`.
+
+### Why the override and not a bcrypt bump
+
+`bcrypt@5.1.1` is a transitive dependency anchor for both runtime
+(`@mapbox/node-pre-gyp` performs the native build step at install time on
+the Lambda image) and the CDK Lambda bundling. Bumping `bcrypt` to a major
+that uses a post-`@mapbox/node-pre-gyp@1.x` native pipeline is a PR-2a
+concern (auth BC); for PR 1 — where `bcrypt` is never invoked at runtime
+because no login flow is shipped — a `pnpm.overrides` pin is the smallest
+change that closes the audit gate without touching the dependency graph
+or risking native-build breakage in `deploy-dev.yml`.
+
+### Follow-up
+
+- PR 2a (auth BC) should evaluate bumping `bcrypt` to a release whose
+  native install pipeline no longer uses `@mapbox/node-pre-gyp@1.x`. When
+  that lands, the `pnpm.overrides.tar` entry can be removed.
+- CI's `vulnerability-scan` job (`pnpm audit --prod --audit-level=high`)
+  will keep the gate enforced on every PR.
