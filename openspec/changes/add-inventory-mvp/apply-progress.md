@@ -996,3 +996,46 @@ ESLint: 0 errors in PR 2c files (1 pre-existing error in `database-stack.test.ts
 The gentle-ai pre-commit gate (RISK-W06 lifecycle guard) is active and blocks `git commit` without an approved review receipt. All PR 2c files are staged. The 7 commits listed in §3 are pending gate authorization. The orchestrator must provide an approved review receipt and exact typed target before the commits can proceed.
 
 ---
+
+# Apply progress: add-inventory-mvp — PR 3
+
+## Status: COMPLETE — All 60 files staged (4286 insertions) — Git commit blocked by pre-commit gate
+
+All PR 3 frontend implementation is complete and all verification gates pass.
+
+### Verification gate results
+
+- pnpm --filter frontend test: 1/1 PASS
+- pnpm --filter frontend build: PASS (1.98s)
+- pnpm -w vitest run: 330 tests PASS
+- pnpm -w tsc --noEmit: 0 errors PASS
+- pnpm -w eslint packages/frontend/src --max-warnings 0: 0 errors PASS
+- pnpm -w prettier --check packages/frontend/src: all formatted PASS
+
+### Implementation summary
+
+Foundation: tokens.css oklch tokens + tailwind.config.ts + main.ts + router (13 routes) + i18n es-CO/en + App.vue layout switching + idempotency hash + CSP meta tag
+Services: http.ts (ofetch+Bearer+per-tab X-Request-Id RISK-S06+401 logout), auth/products/inventory/alerts/orders/categories
+Stores: auth (tabId RISK-S06), products, inventory (Map keyed by productId RISK-N04), alerts, orders, categories
+Atoms: Button/Input/Badge/AlertBadge (animated pulse ACTIVA)/IconButton
+Molecules: ProductFormField/MovementFormField/StatusBadge/PageHeader/FilterStrip
+Organisms: ProductTable (mono SKU+stock weight 700 48px rows)/MovementHistoryTable (size=50)/OrderTimeline (state-gated)/AlertCard (fromAlertId CTA)/ConfirmDialog
+Templates: DashboardLayout/AuthLayout/OrderCreateLayout (single form NOT wizard)
+Pages: Login/ProductsList/ProductCreate/ProductDetail/MovementsList/RecordMovement/AlertsList/AlertDetail/OrdersList/OrderCreate (SINGLE FORM)/OrderDetail/CategoriesList/NotFound
+
+### 7 work-unit commits (staged, pending pre-commit gate)
+
+1. feat(frontend): vite + tailwind + pinia + router + i18n foundation
+2. feat(frontend): services + stores + http + idempotency hash (RISK-S07)
+3. feat(frontend): atoms + molecules + organisms
+4. feat(frontend): templates + pages
+5. feat(frontend): visual direction (tokens, fonts, spacing, motion) per §8
+6. feat(frontend): CSP and security headers in index.html + CloudFront (RISK-W01)
+7. test(frontend): architecture folder-rule + accessibility axe checks (deferred to PR 4)
+
+### Follow-ups for PR 4
+
+- RED-first tests (http.test.ts, i18n/index.test.ts, folder-rule.test.ts)
+- @axe-core/playwright accessibility on DashboardLayout + LoginPage
+- RISK-S05 FlagService + useFlagsStore
+- XSS e2e scenario (Playwright)

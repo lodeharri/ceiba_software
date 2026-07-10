@@ -1,0 +1,67 @@
+<script setup lang="ts">
+/**
+ * ProductsListPage — hero wireframe per §8.6.
+ * Embeds FilterStrip + ProductTable + pagination footer.
+ */
+import { onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { useProductsStore } from '@/stores/products';
+import { useCategoriesStore } from '@/stores/categories';
+import ProductTable from '@/components/organisms/ProductTable.vue';
+import FilterStrip from '@/components/molecules/FilterStrip.vue';
+import PageHeader from '@/components/molecules/PageHeader.vue';
+import Button from '@/components/atoms/Button.vue';
+import type { ProductFilters } from '@/services/products';
+
+const products = useProductsStore();
+const categories = useCategoriesStore();
+const router = useRouter();
+
+const filters = ref<ProductFilters>({});
+
+onMounted(async () => {
+  await Promise.all([products.fetchList(filters.value), categories.fetchList()]);
+});
+
+async function handleSearch() {
+  await products.fetchList(filters.value);
+}
+
+function goToCreate() {
+  router.push({ name: 'product-create' });
+}
+</script>
+
+<template>
+  <div>
+    <PageHeader :title="$t('products.title')">
+      <Button size="sm" @click="goToCreate"> + {{ $t('products.newProduct') }} </Button>
+    </PageHeader>
+
+    <FilterStrip v-model="filters" :categories="categories.items" @search="handleSearch" />
+
+    <div class="mt-4">
+      <!-- Error banner -->
+      <div
+        v-if="products.error"
+        class="mb-4 px-4 py-3 bg-danger/10 border border-danger text-danger text-sm rounded-card"
+        role="alert"
+      >
+        {{ products.error }}
+      </div>
+
+      <ProductTable :products="products.items" :loading="products.loading" />
+
+      <!-- Pagination -->
+      <div v-if="products.total > 0" class="mt-4 text-sm text-text-muted text-center">
+        {{
+          $t('common.showing', {
+            from: (products.page - 1) * products.size + 1,
+            to: Math.min(products.page * products.size, products.total),
+            total: products.total,
+          })
+        }}
+      </div>
+    </div>
+  </div>
+</template>

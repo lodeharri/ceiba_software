@@ -9,7 +9,9 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "allowImportingTsExtensions": false,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node", "vitest/globals"],
+    "exactOptionalPropertyTypes": false,
     "paths": {
       "@/*": ["src/*"],
       "@mercadoexpress/shared": ["../shared/src/index.ts"],

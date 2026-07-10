@@ -1,0 +1,94 @@
+/**
+ * Design tokens — MercadoExpress SPA.
+ * All color values are oklch() for perceptual uniformity (design.md §8.2).
+ * Shadow, motion, and spacing tokens complete the design system.
+ *
+ * Tailwind consumes these via var() in tailwind.config.ts theme.extend.
+ * Components MUST use these variables — never raw hex or oklch literals.
+ */
+
+/* ─── Color palette ─────────────────────────────────────────────────── */
+:root {
+  --color-primary: oklch(0.55 0.13 245);
+  --color-primary-hover: oklch(0.48 0.14 245);
+  --color-surface: oklch(0.99 0 0);
+  --color-card: oklch(1 0 0);
+  --color-success: oklch(0.62 0.13 145);
+  --color-warning: oklch(0.78 0.13 75);
+  --color-danger: oklch(0.55 0.18 25);
+  --color-muted: oklch(0.55 0.005 260);
+  --color-text: oklch(0.2 0.005 260);
+  --color-text-muted: oklch(0.45 0.005 260);
+}
+
+/* ─── Shadows ───────────────────────────────────────────────────────── */
+:root {
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.06);
+  --shadow-lg: 0 8px 24px oklch(0 0 0 / 0.1);
+}
+
+/* ─── Motion durations (design.md §8.5) ─────────────────────────────── */
+:root {
+  --duration-hover: 120ms;
+  --duration-state: 200ms;
+  --duration-layout: 320ms;
+  --ease-layout: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ─── Border radius (design.md §8.5) ────────────────────────────────── */
+:root {
+  --radius-atom: 6px; /* button, input, badge */
+  --radius-card: 10px; /* table containers, cards */
+  --radius-modal: 16px; /* modals, dropdowns */
+}
+
+/* ─── Spacing (design.md §8.4) — committed to 4px grid ─────────────── */
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+}
+
+/* ─── Reduced motion (design.md §8.5) ───────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-hover: 0ms;
+    --duration-state: 0ms;
+    --duration-layout: 0ms;
+  }
+}
+
+/* ─── Base font settings ─────────────────────────────────────────────── */
+:root {
+  font-family: 'Inter Variable', 'Inter', system-ui, sans-serif;
+  font-size: 14px; /* text-sm = 0.875rem */
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+  background-color: var(--color-surface);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Mono font for codes + numbers ─────────────────────────────────── */
+.font-mono,
+code,
+kbd,
+pre {
+  font-family: 'JetBrains Mono Variable', ui-monospace, monospace;
+}
+
+/* ─── Focus ring (design.md §8.9) ───────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-atom);
+}
+
+/* Remove default focus ring from mouse users */
+:focus:not(:focus-visible) {
+  outline: none;
+}

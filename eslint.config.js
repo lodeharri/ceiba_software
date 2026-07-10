@@ -31,13 +31,28 @@ export default [
   ...tseslint.configs.recommended,
   ...vuePlugin.configs['flat/recommended'],
   {
+    // Vue SFCs with lang="ts" need both vue-eslint-parser and @typescript-eslint/parser
+    // to handle TypeScript in <script setup lang="ts"> blocks.
     files: ['**/*.vue'],
+    languageOptions: {
+      parserOptions: {
+        parser: tseslint.parser,
+      },
+    },
     rules: {
       // The vue/recommended rule wants `<h1>` content on its own line, which
       // fights prettier's `<h1 class="...">text</h1>` formatting. Turn it off
       // for PR 0's stub App.vue; PR 3 may revisit when the visual direction
       // is in.
       'vue/singleline-html-element-content-newline': 'off',
+      // Atomic UI components use single-word names (Button, Input, Badge).
+      'vue/multi-word-component-names': 'off',
+      // Vue SFC props with optional defaults are fine.
+      'vue/require-default-prop': 'off',
+      // Self-closing void elements (input, br, hr) are valid HTML5.
+      'vue/html-self-closing': ['error', { html: { void: 'always' } }],
+      // Attributes can be on one line.
+      'vue/max-attributes-per-line': 'off',
     },
   },
   {
