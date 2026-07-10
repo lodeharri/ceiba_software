@@ -53,7 +53,7 @@ describe('DatabaseStack', () => {
     expect(templateStr).toContain('db.t3.micro');
   });
 
-  it('exports the databaseUrlSecretArn and securityGroupId CFN outputs', () => {
+  it('exports the databaseSecretArn and securityGroupId CFN outputs (PR 1 review C2: no plaintext SSM URL)', () => {
     const app = new App();
     const { DatabaseStack } = loadDatabaseStackModule();
     const stack = new DatabaseStack(app, 'DbStackTest3', { stage: 'dev', env: PLACEHOLDER_ENV });
@@ -61,8 +61,15 @@ describe('DatabaseStack', () => {
     const template = Template.fromStack(stack);
     const outputs = template.findOutputs('*');
 
-    expect(outputs['DatabaseUrlSecretArn']).toBeDefined();
+    // PR 1 review C2: the export now points at the Secrets Manager secret
+    // ARN, not a plaintext SSM `database-url` parameter. There should be
+    // no SSM String parameter named `database-url` anymore.
+    expect(outputs['DatabaseSecretArn']).toBeDefined();
     expect(outputs['SecurityGroupId']).toBeDefined();
+    const templateStr = JSON.stringify(template.toJSON());
+    expect(templateStr).not.toMatch(/\/database-url/);
+    // Sanity: the DB credentials live in a Secrets Manager secret.
+    expect(templateStr).toContain('AWS::SecretsManager::Secret');
   });
 
   it('disables deletion protection in dev', () => {

@@ -51,11 +51,16 @@ export class MigrationsCustomResource extends Construct {
       },
     });
 
-    // The Lambda needs to read the SSM Parameter Store entry holding the
-    // DATABASE_URL template. Permissions: ssm:GetParameter + kms:Decrypt.
+    // The Lambda carries the Secrets Manager secret ARN in DATABASE_URL
+    // and calls GetSecretValue at cold start to unmarshal the connection
+    // string (PR 1 review BLOCKER C2 — the prior flow had a plaintext
+    // SSM parameter carrying the resolved URL; we now keep the password
+    // in Secrets Manager and out of CFN env-var plaintext).
+    // KMS Decrypt remains required for future SSM SecureString reads
+    // (the admin-password parameter lands with BLOCKER C3 closeout).
     migrationsFunction.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['ssm:GetParameter', 'ssm:GetParameters'],
+        actions: ['secretsmanager:GetSecretValue'],
         resources: [databaseUrlSecretArn],
       }),
     );

@@ -14,7 +14,12 @@
  *   - deletionProtection: false in dev (so `cdk destroy` works in PR cycles)
  *
  * The stack exports two CFN outputs that downstream stacks depend on:
- *   - databaseUrlSecretArn: arn of the SSM SecureString holding DATABASE_URL.
+ *   - databaseUrlSecretArn: ARN of the Secrets Manager secret carrying the
+ *     DB master credentials JSON. Lambdas must call GetSecretValue on this
+ *     ARN at cold start to materialize the connection string (PR 2a).
+ *     (Previously a plaintext SSM `String` parameter with a CFN dynamic
+ *     reference — see PR 1 review BLOCKER C2; that flow resolved the
+ *     password into a plaintext SSM parameter at deploy time.)
  *   - securityGroupId: id of the SG that grants the Lambdas ingress to 5432.
  *
  * Cost note: `deletionProtection: false` in dev means `cdk destroy` will
@@ -25,7 +30,7 @@ import { Stack, type StackProps, CfnOutput, RemovalPolicy, Tags, Duration } from
 import type { Construct } from 'constructs';
 import * as rds from 'aws-cdk-lib/aws-rds';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
-import * as ssm from 'aws-cdk-lib/aws-ssm';
+import type * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { type Stage, infraConfig } from '../config.js';
 
 export interface DatabaseStackProps extends StackProps {
@@ -33,7 +38,7 @@ export interface DatabaseStackProps extends StackProps {
 }
 
 export class DatabaseStack extends Stack {
-  /** CFN output — the SSM parameter ARN that holds `DATABASE_URL`. */
+  /** CFN output — ARN of the Secrets Manager secret holding the DB master credentials. */
   public readonly databaseUrlSecretArn: string;
   /** CFN output — the security group id that grants Lambda ingress to 5432. */
   public readonly securityGroupId: string;
@@ -82,11 +87,26 @@ export class DatabaseStack extends Stack {
     );
 
     // The DB credentials live in a Secrets Manager secret (auto-rotated by
-    // RDS) and the connection string is published to SSM Parameter Store
-    // as a SecureString so Lambda env vars can read it cheaply.
-    const credentials = rds.Credentials.fromGeneratedSecret('mercadoexpress_admin', {
+    // RDS). We expose it as an explicit `rds.DatabaseSecret` so we can
+    // capture the secret ARN here and thread it to the migrations Lambda
+    // and the BC Lambdas — those Lambdas must call GetSecretValue at
+    // cold start and unmarshal the connection URL themselves. This avoids
+    // the prior SSM-parameter-carries-resolved-password anti-pattern
+    // (PR 1 review BLOCKER C2): a `String` SSM parameter with a CFN
+    // dynamic reference is evaluated at deploy time and stores the
+    // resolved password as plaintext in SSM.
+    const dbSecret = new rds.DatabaseSecret(this, 'DbSecret', {
+      username: 'mercadoexpress_admin',
       secretName: `MercadoExpress-${stage}-db-master`,
     });
+    // DatabaseSecret's `secretFullArn` is typed as optional on the
+    // concrete subclass but `Credentials.fromSecret` requires the
+    // full `ISecret` interface (which marks it required). Cast
+    // through `unknown` \u2014 the runtime object satisfies ISecret.
+    const credentials = rds.Credentials.fromSecret(
+      dbSecret as unknown as secretsmanager.ISecret,
+      'mercadoexpress_admin',
+    );
 
     const database = new rds.DatabaseInstance(this, 'Postgres', {
       engine: rds.DatabaseInstanceEngine.postgres({
@@ -130,22 +150,18 @@ export class DatabaseStack extends Stack {
     // the operational runbook can find it.
     Tags.of(database).add('ExtensionVector', 'pgvector');
 
-    // Publish a human-readable connection-string template to SSM. The
-    // secret value (with the generated password) lives in Secrets Manager;
-    // the SSM parameter holds only the URL template, not the password.
-    const databaseUrlParameter = new ssm.StringParameter(this, 'DatabaseUrlParameter', {
-      parameterName: `/MercadoExpress/${stage}/database-url`,
-      stringValue: `postgresql://mercadoexpress_admin:{{resolve:secretsmanager:${credentials.secretName}}}@${database.dbInstanceEndpointAddress}:${database.dbInstanceEndpointPort}/mercadoexpress`,
-      description: `MercadoExpress ${stage} DATABASE_URL template. The {{resolve:secretsmanager:...}} placeholder is resolved at Lambda cold start by SSM.`,
-    });
-
-    this.databaseUrlSecretArn = databaseUrlParameter.parameterArn;
+    // The lambdas carry the Secrets Manager ARN (not the resolved URL)
+    // in the DATABASE_URL env var and call GetSecretValue at cold start
+    // to construct the connection string. This keeps the password in
+    // Secrets Manager and out of CFN env-var plaintext.
+    this.databaseUrlSecretArn = dbSecret.secretArn;
     this.securityGroupId = databaseSecurityGroup.securityGroupId;
 
-    new CfnOutput(this, 'DatabaseUrlSecretArn', {
+    new CfnOutput(this, 'DatabaseSecretArn', {
       value: this.databaseUrlSecretArn,
-      description: 'SSM Parameter Store ARN holding the DATABASE_URL template',
-      exportName: `MercadoExpress-${stage}-DatabaseUrlSecretArn`,
+      description:
+        'Secrets Manager ARN carrying the DB master credentials JSON. Lambdas call GetSecretValue at cold start to materialize DATABASE_URL.',
+      exportName: `MercadoExpress-${stage}-DatabaseSecretArn`,
     });
     new CfnOutput(this, 'SecurityGroupId', {
       value: this.securityGroupId,
