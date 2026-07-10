@@ -31,6 +31,7 @@ import type { Construct } from 'constructs';
 import * as rds from 'aws-cdk-lib/aws-rds';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import type * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { type Stage, infraConfig } from '../config.js';
 
 export interface DatabaseStackProps extends StackProps {
@@ -40,6 +41,8 @@ export interface DatabaseStackProps extends StackProps {
 export class DatabaseStack extends Stack {
   /** CFN output — ARN of the Secrets Manager secret holding the DB master credentials. */
   public readonly databaseUrlSecretArn: string;
+  /** CFN output — name of the SSM SecureString parameter holding the admin password. */
+  public readonly adminPasswordParameterName: string;
   /** CFN output — the security group id that grants Lambda ingress to 5432. */
   public readonly securityGroupId: string;
 
@@ -149,6 +152,21 @@ export class DatabaseStack extends Stack {
     // property in CDK; we publish the intent as a CFN tag instead so
     // the operational runbook can find it.
     Tags.of(database).add('ExtensionVector', 'pgvector');
+
+    // Admin bootstrap password — stored as an SSM SecureString (per
+    // PR 1 review BLOCKER C3). Initial value is a placeholder; the
+    // operations runbook `runbook/rotate-admin-password.md` rotates real
+    // passwords in via `aws ssm put-parameter`. The migrations Lambda
+    // reads this parameter via `ssm.StringParameter.valueForString
+    // Parameter(...)` and the PR 2a seed bcrypt-hashes it into the
+    // `users` table.
+    const adminPasswordParameter = new ssm.StringParameter(this, 'AdminPasswordParameter', {
+      parameterName: `/MercadoExpress/${stage}/admin-password`,
+      stringValue: 'placeholder-replaced-by-ops',
+      description: `MercadoExpress ${stage} admin (usuario seed) bootstrap password. Rotate via runbook/rotate-admin-password.md.`,
+      type: ssm.ParameterType.SECURE_STRING,
+    });
+    this.adminPasswordParameterName = adminPasswordParameter.parameterName;
 
     // The lambdas carry the Secrets Manager ARN (not the resolved URL)
     // in the DATABASE_URL env var and call GetSecretValue at cold start

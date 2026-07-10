@@ -19,11 +19,14 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import type { Stage } from '../config.js';
 
 export interface MigrationsCustomResourceProps {
   stage: Stage;
   databaseUrlSecretArn: string;
+  /** Name of the SSM SecureString parameter carrying the admin bootstrap password. */
+  adminPasswordParameterName: string;
 }
 
 export class MigrationsCustomResource extends Construct {
@@ -32,7 +35,7 @@ export class MigrationsCustomResource extends Construct {
   public constructor(scope: Construct, id: string, props: MigrationsCustomResourceProps) {
     super(scope, id);
 
-    const { stage, databaseUrlSecretArn } = props;
+    const { stage, databaseUrlSecretArn, adminPasswordParameterName } = props;
 
     // Lambda that runs the migrations + seed.
     const migrationsFunction = new nodejs.NodejsFunction(this, 'MigrationsFunction', {
@@ -47,7 +50,14 @@ export class MigrationsCustomResource extends Construct {
         DATABASE_URL: databaseUrlSecretArn,
         ADMIN_USERNAME: 'admin',
         ADMIN_EMAIL: 'admin@mercadoexpress.local',
-        ADMIN_PASSWORD: 'change-me-on-first-deploy',
+        // PR 1 review BLOCKER C3: pull the admin password from the SSM
+        // SecureString parameter at cold start — never bake a literal into
+        // the CFN env-var block (synthesized CFN previously carried
+        // 'change-me-on-first-deploy' as plaintext).
+        ADMIN_PASSWORD: ssm.StringParameter.valueForStringParameter(
+          this,
+          adminPasswordParameterName,
+        ),
       },
     });
 
@@ -56,12 +66,25 @@ export class MigrationsCustomResource extends Construct {
     // string (PR 1 review BLOCKER C2 — the prior flow had a plaintext
     // SSM parameter carrying the resolved URL; we now keep the password
     // in Secrets Manager and out of CFN env-var plaintext).
-    // KMS Decrypt remains required for future SSM SecureString reads
-    // (the admin-password parameter lands with BLOCKER C3 closeout).
     migrationsFunction.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['secretsmanager:GetSecretValue'],
         resources: [databaseUrlSecretArn],
+      }),
+    );
+    // SSM SecureString permission for the admin-password parameter
+    // (BLOCKER C3). `kms:Decrypt` on `*` covers the AWS-managed CMK
+    // `alias/aws/ssm` scope (PR 1 review S5 notes scoping could be
+    // tighter; deferred to PR 4 review-cleanup).
+    const adminPasswordParameterArn = ssm.StringParameter.fromStringParameterName(
+      this,
+      'AdminPasswordParameterRef',
+      adminPasswordParameterName,
+    ).parameterArn;
+    migrationsFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ssm:GetParameter', 'ssm:GetParameters'],
+        resources: [adminPasswordParameterArn],
       }),
     );
     migrationsFunction.addToRolePolicy(
