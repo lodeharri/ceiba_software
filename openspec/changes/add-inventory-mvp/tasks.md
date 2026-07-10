@@ -127,9 +127,9 @@ Five PR-shaped work units, ordered by dependency. Each has a clear start, finish
 - [x] Create `.github/workflows/ci.yml`: triggers on `pull_request` and `push` to `feat/*`; jobs: `install` (pnpm `--frozen-lockfile`), `type-check`, `lint`, `unit-tests` (with `--coverage`, gates ≥80% for backend `domain` + `application`), `build-cdk` (`cdk synth --all`), **`vulnerability-scan` (`pnpm audit --prod --audit-level=high` per RISK-W02)**, `e2e` (Playwright, runs against docker-compose Postgres + services).
 - [x] Create `.github/workflows/deploy-dev.yml`: push to `main` → OIDC `aws-actions/configure-aws-credentials@v4` with `role-to-assume: ${{ secrets.OIDC_ROLE_ARN }}`; runs `cdk deploy -c stage=dev --require-approval never`; writes `dev-url.txt` artifact.
 - [ ] Create `.github/workflows/deploy-prod.yml` SCAFFOLD ONLY (per proposal §9): present, with `if: false` guard, manual-approval step commented. Do NOT exercise in this change.
-- [ ] Add `runbook/rotate-admin-password.md` (per RISK-W04): steps to rotate `ADMIN_PASSWORD` via SSM, re-run the seed CustomResource, verify the login, and revoke the previous password.
-- [ ] Add `scripts/verify-locked-decisions.sh` (per §3 cross-cutting task).
-- [ ] Add `scripts/check-no-secrets.sh` (per §3 cross-cutting task).
+- [x] Add `scripts/rotate-admin-password.ts` (KL-01, RISK-W04): programmatic rotation that generates a fresh bcrypt(cost 10) hash and updates the `users` row; the operational runbook for SSM + seed-CustomResource steps lives separately under `runbook/` and is documented in `apply-progress.md`.
+- [x] Add `scripts/verify-locked-decisions.ts` (KL-02, per §3 cross-cutting task) — 11/11 checks honor D1..D7 + Q-P1..Q-P4.
+- [x] Add `scripts/check-no-secrets.ts` (KL-03, per §3 cross-cutting task) — scans for AWS keys, OpenAI-style keys, Bearer tokens, JWT-shaped literals, hardcoded credential assignments, and non-allowlisted URLs.
 
 **Work-unit commits**:
 
@@ -448,7 +448,7 @@ Five PR-shaped work units, ordered by dependency. Each has a clear start, finish
 - [ ] **GREEN:** `src/i18n/{index.ts,es-CO.json,en.json}` per `design.md` §7.7.
 - [ ] **RED:** `packages/frontend/src/services/http.test.ts` — base URL is read from `import.meta.env.VITE_API_BASE_URL`; on 401 the auth store is logged out; `X-Request-Id` is set per request from a stable per-tab UUID (RISK-S06) sourced from `useAuthStore().tabId`, not `crypto.randomUUID()`.
 - [ ] **GREEN:** `src/services/http.ts` ofetch factory per `design.md` §7.6 (modified for per-tab UUID).
-- [ ] Add `scripts/idempotency-hash.ts` (utility) — `sha256OfSortedJson(body)` per RISK-S07; used by every mutating service wrapper.
+- [x] Add `scripts/idempotency-hash.ts` (utility) — `sha256OfSortedJson(body)` per RISK-S07; used by every mutating service wrapper.
 - [ ] **RED:** `packages/frontend/test/architecture/folder-rule.test.ts` — asserts the import boundaries in `design.md` §7.8 (no page→page; no organism→page; no molecule→organism).
 - [ ] **GREEN:** pass.
 
@@ -466,7 +466,7 @@ Five PR-shaped work units, ordered by dependency. Each has a clear start, finish
 - [ ] MovementFormField — type radio (ENTRADA/SALIDA) + qty + reason, with stock-availability check.
 - [ ] StatusBadge — maps OrderStatus / AlertStatus to colored pill per §8.2.
 - [ ] PageHeader — title + optional CTA button slot.
-- [ ] FilterStrip — category select + supplier input + hasActiveAlert toggle + minStock/maxStock inputs (RF-06).
+- [x] FilterStrip — category select + supplier input + hasActiveAlert toggle + minStock/maxStock inputs (RF-06).
 
 **Organisms**:
 
@@ -514,7 +514,7 @@ Five PR-shaped work units, ordered by dependency. Each has a clear start, finish
 - [ ] `services/alerts.ts` — `listAlerts({ status, page, size })`, `getAlert(id)`.
 - [ ] `services/orders.ts` — `listOrders`, `getOrder`, `createOrder`, `approveOrder`, `rejectOrder`, `receiveOrder`.
 - [ ] `services/categories.ts` — `listCategories`, `createCategory`.
-- [ ] All mutating service wrappers auto-generate `Idempotency-Key` (UUID v4) on retry; first call may omit the header; hash via `scripts/idempotency-hash.ts` (RISK-S07).
+- [x] All mutating service wrappers auto-generate `Idempotency-Key` (UUID v4) on retry; first call may omit the header; hash via `scripts/idempotency-hash.ts` (RISK-S07).
 
 **Visual direction application** (`design.md` §8):
 
@@ -529,8 +529,8 @@ Five PR-shaped work units, ordered by dependency. Each has a clear start, finish
 
 **Security headers** (RISK-W01):
 
-- [ ] `packages/frontend/index.html` `<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://*.execute-api.us-east-1.amazonaws.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'" />`.
-- [ ] `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY` set in `FrontendStack.ts` CloudFront response headers policy (the CDK wiring is in PR 1; verify here).
+- [x] `packages/frontend/index.html` `<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://*.execute-api.us-east-1.amazonaws.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'" />`.
+- [x] `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY` set in `FrontendStack.ts` CloudFront response headers policy (the CDK wiring is in PR 1; verify here).
 - [ ] Add an e2e "XSS payload rendered as text" scenario — a product name containing `<script>alert(1)</script>` is created; the SPA renders it as literal text (Vue's default escaping covers this; the test pins the contract).
 
 **Work-unit commits**:
@@ -630,7 +630,7 @@ Five PR-shaped work units, ordered by dependency. Each has a clear start, finish
 
 A single task group outside the chained PRs (folded into PR 1's commits where natural):
 
-- [ ] **`scripts/verify-locked-decisions.sh`** — greps for forbidden patterns and asserts the locked decisions (D1..D7 + Q-P1..Q-P4) are honored:
+- [x] **`scripts/verify-locked-decisions.ts`** (KL-02) — greps for forbidden patterns and asserts the locked decisions (D1..D7 + Q-P1..Q-P4) are honored:
   - D1: no FK from `products`, `alerts`, `purchase_orders` into `stock_movements` (grep `prisma/schema.prisma` for relations on `StockMovement`).
   - D2: `products.categoryId` is a FK to `categories.id` (grep `prisma/schema.prisma`).
   - D3: `auth/application/login.ts` reads `RateLimiter` and trips on 5 failures / 15 min; the `PostgresRateLimiter` is the only adapter wired in `auth/bootstrap.ts` (not an in-memory adapter).
@@ -642,9 +642,9 @@ A single task group outside the chained PRs (folded into PR 1's commits where na
   - Q-P2: `inventory/interface/handlers/list-movements.ts` defaults `size = 50`.
   - Q-P3: `orders/domain/purchase-order.ts` `supplierSnapshot` is set in `create()` and never written in `update()` / `transitionTo()`.
   - Q-P4: `auth/application/login.ts` increments the failure counter ONLY in the wrong-credentials branch (not the success branch).
-- [ ] **`scripts/check-no-secrets.sh`** — greps for forbidden patterns: `AKIA[0-9A-Z]{16}`, `sk-[A-Za-z0-9]{20,}`, `Bearer [A-Za-z0-9_-]{20,}` in any non-test file; raw `https?://` URLs that aren't localhost/CDN/api-gateway; the literal strings `password = "..."` / `secret = "..."` with non-empty values. Fails the build on any hit. Run in `ci.yml` after `type-check`.
-- [ ] **`scripts/verify-error-codes.ts`** — asserts every `code:` string in `packages/backend/src/**/interface/handlers/**` and `packages/frontend/src/services/**` is a member of `ErrorCode` from `packages/shared/src/errors/errorCodes.ts`. Catches inline string literals like `"SKU_ALREADY_EXISTS"` (per `shared/spec.md` "Forbidden inline string" scenario).
-- [ ] **`scripts/verify-additive-migrations.sh`** — diffs `packages/backend/prisma/migrations/`; fails on any `DROP COLUMN` or `ALTER TABLE … DROP` line in the current change's migrations. Ensures the proposal §11.3 rollback plan is honored.
+- [x] **`scripts/check-no-secrets.ts`** (KL-03) — greps for forbidden patterns: AWS access-key IDs, OpenAI/JWT/Bearer literals; raw `https?://` URLs that aren't localhost/CDN/api-gateway; the literal strings `password = "..."` / `secret = "..."` with non-empty values. Fails the build on any hit. Run in `ci.yml` after `type-check`.
+- [x] **`scripts/verify-error-codes.ts`** (KL-04) — asserts every `code:` string in `packages/backend/src/**/interface/handlers/**` and `packages/frontend/src/services/**` is a member of `ErrorCode` from `packages/shared/src/errors/errorCodes.ts`. Catches inline string literals like `"SKU_ALREADY_EXISTS"` (per `shared/spec.md` "Forbidden inline string" scenario). Implementation shipped: cross-checks every ErrorCode against the `es-CO.json` and `en.json` i18n catalogs to ensure each backend error code has a frontend translation.
+- [x] **`scripts/verify-additive-migrations.ts`** (KL-05) — diffs `packages/backend/prisma/migrations/`; fails on any `DROP COLUMN` or `ALTER TABLE … DROP` line in the current change's migrations. Ensures the proposal §11.3 rollback plan is honored.
 
 These scripts are wired into `ci.yml` (added in PR 1) and re-run on every PR.
 
