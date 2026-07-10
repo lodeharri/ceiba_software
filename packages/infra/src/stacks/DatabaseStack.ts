@@ -33,6 +33,7 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import type * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { type Stage, infraConfig } from '../config.js';
+import { MigrationsCustomResource } from '../constructs/migrations.js';
 
 export interface DatabaseStackProps extends StackProps {
   stage: Stage;
@@ -186,5 +187,21 @@ export class DatabaseStack extends Stack {
       description: 'Security group id granting Lambda ingress to Postgres 5432',
       exportName: `MercadoExpress-${stage}-DatabaseSecurityGroupId`,
     });
+
+    // PR 2a BLOCKER C1 closeout: instantiate MigrationsCustomResource inside
+    // the DatabaseStack so CDK's SSM StringParameter.valueForStringParameter
+    // has a Stack scope. The custom resource runs prisma migrate + seed
+    // against the DB once it is available. Downstream stacks depend on it via
+    // api.addDependency(database.migrationsNode).
+    const migrations = new MigrationsCustomResource(this, 'Migrations', {
+      stage,
+      databaseUrlSecretArn: this.databaseUrlSecretArn,
+      adminPasswordParameterName: this.adminPasswordParameterName,
+    });
+    // Expose the migrations construct node so other stacks can add it as a dependency.
+    this.migrationsNode = migrations;
   }
+
+  /** Node of the MigrationsCustomResource for use in addDependency. */
+  public readonly migrationsNode: Construct;
 }

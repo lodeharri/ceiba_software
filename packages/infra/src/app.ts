@@ -74,9 +74,11 @@ export function createStageStacks(app: App, stage: Stage, props?: StackProps): S
     ...stackProps,
   });
 
-  // Sequencing: database must exist before api (FNS read DATABASE_URL);
-  // frontend must exist before api (CORS origin). ObservabilityStack
-  // depends on api (alarms reference Lambdas).
+  // Sequencing: database must exist before migrations (migrations Lambda
+  // needs the DB to exist); migrations must complete before api (BC Lambdas
+  // need the DB schema to be applied); frontend must exist before api
+  // (CORS origin). ObservabilityStack depends on api (alarms reference Lambdas).
+  api.node.addDependency(database.migrationsNode);
   api.addDependency(database);
   api.addDependency(frontend);
   observability.addDependency(api);

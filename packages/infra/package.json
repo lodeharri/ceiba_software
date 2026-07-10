@@ -16,6 +16,8 @@
     "deploy:dev": "cdk deploy -c stage=dev --require-approval never"
   },
   "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.632.0",
+    "@aws-sdk/client-ssm": "^3.632.0",
     "aws-cdk-lib": "^2.155.0",
     "constructs": "^10.4.0"
   },

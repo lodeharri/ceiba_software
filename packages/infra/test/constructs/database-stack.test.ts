@@ -5,6 +5,7 @@
  *   - RDS Postgres 16.
  *   - pgvector extension enabled.
  *   - Instance class db.t3.micro.
+ *   - MigrationsCustomResource instantiated inside DatabaseStack (BLOCKER C1 closeout).
  *
  * RED state: DatabaseStack does not exist yet → import fails, suite fails.
  * GREEN state: DatabaseStack is added in PR 1 with the expected shape.
@@ -28,6 +29,27 @@ function loadDatabaseStackModule(): {
 // DatabaseStack uses Vpc.fromLookup, which requires env. We pass a fixed
 // placeholder env so the tests can synthesize locally without AWS credentials.
 const PLACEHOLDER_ENV = { account: '000000000000', region: 'us-east-1' };
+
+describe('MigrationsCustomResource (BLOCKER C1 — PR 2a closeout)', () => {
+  it('produces a CustomResource and Lambda in the DatabaseStack template', () => {
+    const app = new App();
+    const { DatabaseStack } = loadDatabaseStackModule();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dbStack = new DatabaseStack(app, 'MigrTestDb', {
+      stage: 'dev',
+      env: PLACEHOLDER_ENV,
+    }) as any;
+
+    const template = Template.fromStack(dbStack);
+    const templateStr = JSON.stringify(template.toJSON());
+
+    // CustomResource + Lambda must appear (proves the construct is instantiated, not dead code).
+    expect(templateStr).toContain('AWS::CloudFormation::CustomResource');
+    expect(templateStr).toContain('AWS::Lambda::Function');
+    // DATABASE_SECRET_ARN env var must be present (BLOCKER C2: resolve at runtime, not plaintext).
+    expect(templateStr).toContain('DATABASE_SECRET_ARN');
+  });
+});
 
 describe('DatabaseStack', () => {
   it('provisions an RDS Postgres 16 instance with the pgvector extension', () => {

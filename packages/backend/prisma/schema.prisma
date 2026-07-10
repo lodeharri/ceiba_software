@@ -12,6 +12,9 @@
 
 generator client {
   provider = "prisma-client-js"
+  // pnpm does not link .prisma output to node_modules by default; explicit
+  // output path ensures @prisma/client/default.js can resolve .prisma/client/default.
+  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {

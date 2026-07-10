@@ -19,7 +19,8 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import * as iam from 'aws-cdk-lib/aws-iam';
-import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as path from 'node:path';
+import * as url from 'node:url';
 import type { Stage } from '../config.js';
 
 export interface MigrationsCustomResourceProps {
@@ -38,26 +39,36 @@ export class MigrationsCustomResource extends Construct {
     const { stage, databaseUrlSecretArn, adminPasswordParameterName } = props;
 
     // Lambda that runs the migrations + seed.
+    // Resolve the entry path relative to this construct file so it works
+    // both from source (ts-node) and from dist/ (after tsc build).
+    const thisUrl = url.fileURLToPath(import.meta.url);
+    const thisDir = path.dirname(thisUrl);
+    const migrationsLambdaEntry = path.resolve(thisDir, 'migrations-lambda.js');
+
     const migrationsFunction = new nodejs.NodejsFunction(this, 'MigrationsFunction', {
       functionName: `MercadoExpress-${stage}-prisma-migrate-and-seed`,
       runtime: lambda.Runtime.NODEJS_20_X,
-      entry: `./migrations-lambda.ts`,
+      entry: migrationsLambdaEntry,
       handler: 'handler',
       memorySize: 1024,
-      timeout: Duration.minutes(10),
+      timeout: Duration.minutes(15),
       environment: {
         STAGE: stage,
-        DATABASE_URL: databaseUrlSecretArn,
+        // The Lambda receives the Secrets Manager secret ARN and resolves
+        // the actual DATABASE_URL at cold start via GetSecretValue.
+        // This keeps the password out of CFN env-var plaintext (BLOCKER C2).
+        DATABASE_SECRET_ARN: databaseUrlSecretArn,
         ADMIN_USERNAME: 'admin',
         ADMIN_EMAIL: 'admin@mercadoexpress.local',
         // PR 1 review BLOCKER C3: pull the admin password from the SSM
         // SecureString parameter at cold start — never bake a literal into
         // the CFN env-var block (synthesized CFN previously carried
         // 'change-me-on-first-deploy' as plaintext).
-        ADMIN_PASSWORD: ssm.StringParameter.valueForStringParameter(
-          this,
-          adminPasswordParameterName,
-        ),
+        // Pass the SSM parameter name so the Lambda can read the password at runtime.
+        // We pass the raw string (not a CDK token reference) so CDK doesn't try
+        // to resolve it at synth time via describeParameters (which fails in CI).
+        // The Lambda reads the value via ssm:GetParameter at cold start.
+        ADMIN_PASSWORD_PARAM_NAME: adminPasswordParameterName,
       },
     });
 
@@ -72,27 +83,16 @@ export class MigrationsCustomResource extends Construct {
         resources: [databaseUrlSecretArn],
       }),
     );
-    // SSM SecureString permission for the admin-password parameter
-    // (BLOCKER C3). `kms:Decrypt` on `*` covers the AWS-managed CMK
-    // `alias/aws/ssm` scope (PR 1 review S5 notes scoping could be
-    // tighter; deferred to PR 4 review-cleanup).
-    const adminPasswordParameterArn = ssm.StringParameter.fromStringParameterName(
-      this,
-      'AdminPasswordParameterRef',
-      adminPasswordParameterName,
-    ).parameterArn;
+    // SSM GetParameter permission. We use the parameter name as the resource
+    // (SSM supports both name and ARN in iam:GetParameter policy resources).
     migrationsFunction.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['ssm:GetParameter', 'ssm:GetParameters'],
-        resources: [adminPasswordParameterArn],
-      }),
-    );
-    migrationsFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ['kms:Decrypt'],
-        // AWS-managed CMK for SSM SecureString — `*` is the documented
-        // scope for "alias/aws/ssm".
-        resources: ['*'],
+        resources: [
+          // Use the simple-name form so CDK doesn't try to construct the full ARN
+          // (which requires a DescribeParameters SDK call that fails in test/CI).
+          `arn:aws:ssm:*:*:parameter${adminPasswordParameterName.replace(/^\//, '/')}`,
+        ],
       }),
     );
 

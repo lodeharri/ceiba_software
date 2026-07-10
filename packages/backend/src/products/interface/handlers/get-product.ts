@@ -3,6 +3,7 @@
  */
 
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
+import { ErrorCode } from '@mercadoexpress/shared';
 import { getProductsBootstrap } from '../../bootstrap.js';
 import { withRequestContext, type RequestContext } from '../../../shared/request-context.js';
 import { toErrorResponse } from '../../../shared/error-mapper.js';
@@ -21,7 +22,7 @@ export const handler = withRequestContext(
           statusCode: 400,
           headers: { 'Content-Type': 'application/json', 'X-Request-Id': ctx.requestId },
           body: JSON.stringify({
-            code: 'VALIDATION_ERROR',
+            code: ErrorCode.VALIDATION_ERROR,
             message: 'Missing or malformed id.',
             requestId: ctx.requestId,
           }),
