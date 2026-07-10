@@ -24,9 +24,10 @@ test('RISK-003: parallel failures share counter', async ({ request, baseURL }) =
   // OR one succeeds and one fails depending on timing
   const statuses = [resp1.status(), resp2.status()];
 
-  // At least one should be 429 (rate limited)
-  // OR both are 401 if they serialized
-  expect(statuses.some((s) => s === 429 || s === 401)).toBe(true);
+  // Per RISK-003 + verify-report §136: after 4 sequential + 2 parallel failures
+  // (counter ≥5), BOTH parallel requests must return 429 (shared counter invariant).
+  // If this fails at runtime, the parallel reads of the counter are not synchronized.
+  expect(statuses).toEqual([429, 429]);
 });
 
 test('RISK-003: different (ip, username) pairs have independent counters', async ({

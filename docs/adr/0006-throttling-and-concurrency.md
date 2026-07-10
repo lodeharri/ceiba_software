@@ -28,6 +28,20 @@ Three alarms per Lambda (per `design.md` §12.4):
 2. Duration > 3 seconds
 3. Throttles > 0
 
+## Alternatives Considered
+
+### Rely on account-default throttling only
+
+Simpler to configure but unpredictable under burst load — risks runaway cost and noisy-neighbor issues that alarms could not catch early.
+
+### High reserved concurrency in production (e.g. 100)
+
+More headroom but exposes the application to the deadlock surface analyzed in ADR-0002; reserved = 1 fits the SALIDA serialization model instead.
+
+### API Gateway usage plans with per-key quotas
+
+Granular control, but API key management, billing, and per-key dashboards add overhead the MVP does not need at this scale.
+
 ## Consequences
 
 ### Positive

@@ -28,6 +28,20 @@ await prisma.$transaction(async (tx) => {
 
 This locks the row until the transaction commits, serializing concurrent accesses.
 
+## Alternatives Considered
+
+### Optimistic concurrency with version column
+
+Add a `version` field and retry on conflict — better under low contention, but SALIDA writes collide frequently and retries inflate tail latency more than a single row lock.
+
+### SERIALIZABLE isolation level
+
+PostgreSQL serializable transactions abort on serialization failure and require retry — broader locks than `FOR UPDATE` and worse tail latency in this access pattern.
+
+### Application-level distributed lock (Redis/SQS)
+
+External coordinator would solve contention but adds infra and operational overhead unjustified at MVP-scale concurrency.
+
 ## Consequences
 
 ### Positive

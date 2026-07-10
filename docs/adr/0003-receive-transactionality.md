@@ -27,6 +27,20 @@ The `ReceiveOrderUseCase` executes a four-step atomic flow inside `prisma.$trans
 
 If step 2 or 3 throws, the entire transaction rolls back — the order stays `APROBADA`, no stock movement is created.
 
+## Alternatives Considered
+
+### Saga with compensating transactions
+
+Each step commits independently and a failure triggers compensations — more resilient at scale but doubles the code surface and reconciliation logic the MVP doesn't need.
+
+### Two-phase commit across services
+
+Coordinates stock and alert updates through a 2PC coordinator — heavier infra, new failure modes, and overlaps with the direct-port architecture chosen in ADR-0001.
+
+### Eventual consistency via retry queue
+
+Persist each step as an event handled by a separate worker — explicitly violates the RISK-001 atomicity requirement and reintroduces the inconsistency window.
+
 ## Consequences
 
 ### Positive

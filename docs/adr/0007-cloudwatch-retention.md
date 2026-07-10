@@ -22,6 +22,20 @@ new LogGroup(this, `/${lambdaPath}`, {
 });
 ```
 
+## Alternatives Considered
+
+### 30-day CloudWatch retention
+
+More headroom for incident analysis but roughly 4× the storage cost (~2.8 GB/day vs ~700 MB/day) without proportional value at MVP scale.
+
+### Unlimited (never-expire) CloudWatch retention
+
+Simplest configuration but unbounded cost — CloudWatch can become the dominant operational line item within months and contradicts RISK-W10.
+
+### S3-only archival from day one
+
+Cheapest long-term but loses CloudWatch Logs Insights queryability for the most recent week, slowing triage during an active incident.
+
 ## Consequences
 
 ### Positive

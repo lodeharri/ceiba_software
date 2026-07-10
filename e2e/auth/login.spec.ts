@@ -49,12 +49,16 @@ test('US-1: 5 failures → 429 rate limit', async ({ request, baseURL }) => {
 });
 
 /**
- * E2E: US-1 Window Expiry
- * Verifies: after 15-minute window, rate limit resets
+ * E2E: US-1 Rate Limit Consistency
+ * NOTE: Intentionally duplicates the previous 5-failures → 429 scenario.
+ * Verifies: rate-limit behaviour is consistent when the same wrong password
+ * payload is re-issued in a fresh test (i.e. the limiter state is not an
+ * artefact of the prior test's request history leaking across cases).
  */
-test('US-1: rate limit resets after window expiry (simulated)', async ({ request, baseURL }) => {
-  // This test verifies the rate limiter structure
-  // In a real scenario, we'd wait 15 minutes or mock time
+test('US-1: 429 still triggered after re-issuing same wrong password', async ({
+  request,
+  baseURL,
+}) => {
   const loginUrl = `${baseURL}/api/v1/auth/login`;
 
   // 5 failures

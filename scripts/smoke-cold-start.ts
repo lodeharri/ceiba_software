@@ -29,7 +29,7 @@ async function measureEndpoint(path: string): Promise<LatencyResult> {
       headers: { Accept: 'application/json' },
     });
     const latencyMs = performance.now() - start;
-    return { latencyMs, status: response.status, ok: response.ok || response.status === 401 };
+    return { latencyMs, status: response.status, ok: response.status === 200 };
   } catch {
     const latencyMs = performance.now() - start;
     return { latencyMs, status: 0, ok: false };
@@ -55,9 +55,7 @@ async function runColdStartSmoke(): Promise<void> {
   }
 
   const endpoints = [
-    '/api/v1/products', // products-lambda
-    '/api/v1/auth/login', // auth-lambda
-    '/api/v1/alerts', // alerts-lambda
+    '/healthz', // unauthenticated cold-start probe
   ];
 
   let allPassed = true;

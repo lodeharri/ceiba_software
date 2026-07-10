@@ -19,6 +19,20 @@ Replace the in-process event bus with **direct port calls** inside the same data
 
 Both ports are called **inside** `prisma.$transaction()` in the `ReceiveOrderUseCase`, ensuring atomicity.
 
+## Alternatives Considered
+
+### In-process Domain Event Bus
+
+Original design — rejected because a handler throwing after transaction commit loses the event and leaves alert state inconsistent with order state (RISK-001).
+
+### Outbox pattern with async event publisher
+
+Persist events to an outbox table in the same transaction, then publish asynchronously — eventually consistent but adds a poller and consumes Lambda time; overkill for two downstream side effects in MVP.
+
+### Cross-BC synchronous HTTP calls inside the transaction
+
+Realistic alternative but introduces network latency and partial-failure modes inside a DB transaction, and tightens the dependency surface without solving the atomicity problem better than direct ports.
+
 ## Consequences
 
 ### Positive

@@ -26,6 +26,20 @@ The VO `StockMovement.applyTo(currentStock)` returns:
 
 Quantity is always positive. The type determines direction.
 
+## Alternatives Considered
+
+### Signed integer quantity field
+
+Single `quantity` column with implicit sign (+/−) — simpler schema but lets sign and type disagree on bad writes, and removes the `quantity > 0` invariant from the DB.
+
+### Separate direction + positive magnitude columns
+
+`direction: IN|OUT` plus a positive `quantity` — duplicates information already encoded by `MovementType` and forces a cross-column invariant.
+
+### Boolean `isIncrease` flag with magnitude
+
+Even more duplicative and harder to read in queries — rejected as noisier than a two-value enum.
+
 ## Consequences
 
 ### Positive
