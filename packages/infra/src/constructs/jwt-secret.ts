@@ -34,12 +34,14 @@ export class JwtSecretPair extends Construct {
       parameterName: `/MercadoExpress/${stage}/jwt-secret`,
       stringValue: 'placeholder-replaced-by-ops',
       description: `MercadoExpress ${stage} JWT HS256 secret (current). Rotate via runbook/rotate-admin-password.md.`,
+      type: ssm.ParameterType.SECURE_STRING,
     });
 
     this.previous = new ssm.StringParameter(this, 'Previous', {
       parameterName: `/MercadoExpress/${stage}/jwt-secret-previous`,
       stringValue: 'placeholder-empty-on-first-deploy',
       description: `MercadoExpress ${stage} JWT HS256 secret (previous). Set when rotating via the runbook; cleared after the overlap window.`,
+      type: ssm.ParameterType.SECURE_STRING,
     });
   }
 }

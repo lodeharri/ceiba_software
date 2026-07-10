@@ -111,17 +111,20 @@ export class ApiStack extends Stack {
 
     // JWT secrets — the dual-secret rotation window requires both
     // `JWT_SECRET` and `JWT_SECRET_PREVIOUS` to live in SSM Parameter
-    // Store as SecureStrings. Initial values are placeholders; the
+    // Store as SecureStrings (encrypted at rest with the AWS-managed
+    // CMK `alias/aws/ssm`). Initial values are placeholders; the
     // operations runbook rotates them.
     const jwtSecret = new ssm.StringParameter(this, 'JwtSecret', {
       parameterName: `/MercadoExpress/${stage}/jwt-secret`,
       stringValue: 'placeholder-replaced-by-ops',
       description: `MercadoExpress ${stage} JWT secret (HS256). Replace via the rotate-admin-password runbook.`,
+      type: ssm.ParameterType.SECURE_STRING,
     });
     const jwtSecretPrevious = new ssm.StringParameter(this, 'JwtSecretPrevious', {
       parameterName: `/MercadoExpress/${stage}/jwt-secret-previous`,
       stringValue: 'placeholder-empty-on-first-deploy',
       description: `MercadoExpress ${stage} JWT previous secret (HS256) — used during the rotation overlap window.`,
+      type: ssm.ParameterType.SECURE_STRING,
     });
 
     // Reserved concurrency per stage. Dev = 1 (cheap, predictable), prod
