@@ -1,5 +1,5 @@
 /**
- * Prisma client singleton (PR 1, design.md §10.2).
+ * Prisma client singleton (PR 1 + PR 2, design.md §10.2 + §3.15).
  *
  * Lambda cold starts must reuse a single PrismaClient per execution
  * environment (a global), not a per-invocation client — otherwise
@@ -9,7 +9,11 @@
  * concurrency (1) plus a single warm-up slot, which keeps us under
  * the Postgres `max_connections` budget.
  *
- * PR 2a replaces the PR 1 stub with a real PrismaClient.
+ * PR 2 changes (design.md §3.15):
+ *   - `buildPrismaUrl` is now an exported helper that branches on STAGE
+ *     to append `sslmode=disable` (localstack) or `sslmode=require`
+ *     (dev/prod). Existing query params are preserved.
+ *   - The factory uses the helper instead of an inline string concat.
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -38,6 +42,46 @@ interface GlobalWithPrisma {
 }
 
 /**
+ * Builds the Prisma DATABASE_URL with stage-aware sslmode and the requested
+ * connection_limit. Pure function so it is testable without instantiating a
+ * PrismaClient.
+ *
+ * Behavior (PR 2, design.md §3.15):
+ *   - Empty URL → throws `DATABASE_URL env var is not configured`.
+ *   - `sslmode` already in the URL → preserved (caller decides the mode).
+ *   - `sslmode` missing + stage='localstack' → appends `sslmode=disable`.
+ *   - `sslmode` missing + any other stage → appends `sslmode=require`.
+ *   - `connection_limit` already in the URL → preserved.
+ *   - `connection_limit` missing → appended with the supplied value.
+ *
+ * Existing query params (e.g. `pool_mode=transaction`) are preserved verbatim.
+ */
+export function buildPrismaUrl(rawUrl: string, stage: string, connectionLimit: number): string {
+  if (!rawUrl) {
+    throw new Error('DATABASE_URL env var is not configured');
+  }
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    // The URL may come from a legacy env var that lacks an explicit scheme
+    // (e.g. `host:5432/db`). Fall back to treating it as a raw connection
+    // string by injecting `postgresql://` if needed.
+    if (!rawUrl.startsWith('postgresql://') && !rawUrl.startsWith('postgres://')) {
+      throw new Error(`DATABASE_URL is not a valid URL: ${rawUrl}`);
+    }
+    url = new URL(rawUrl);
+  }
+  if (!url.searchParams.has('connection_limit')) {
+    url.searchParams.set('connection_limit', String(connectionLimit));
+  }
+  if (!url.searchParams.has('sslmode')) {
+    url.searchParams.set('sslmode', stage === 'localstack' ? 'disable' : 'require');
+  }
+  return url.toString();
+}
+
+/**
  * Returns a process-singleton real PrismaClient.
  * The singleton pattern guarantees one client per execution context
  * (warm Lambda keeps the connection pool alive across invocations).
@@ -48,11 +92,12 @@ interface GlobalWithPrisma {
 export function getPrismaClient(options: PrismaClientOptions = {}): PrismaClient {
   const g = globalThis as GlobalWithPrisma;
   if (!g.__mercadoExpressPrisma) {
-    const url = process.env['DATABASE_URL'] ?? '';
-    const limit = options.connectionLimit ?? 2;
-    const dbUrl = url.includes('connection_limit=')
-      ? url
-      : `${url}${url.includes('?') ? '&' : '?'}connection_limit=${limit}&sslmode=require`;
+    const stage = process.env['STAGE'] ?? 'dev';
+    const dbUrl = buildPrismaUrl(
+      process.env['DATABASE_URL'] ?? '',
+      stage,
+      options.connectionLimit ?? 2,
+    );
     g.__mercadoExpressPrisma = new PrismaClient({
       log: options.log ?? ['warn', 'error'],
       datasources: { db: { url: dbUrl } },

@@ -1,5 +1,5 @@
 /**
- * Migrations Lambda entry (PR 2a BLOCKER C2 closeout).
+ * Migrations Lambda entry (PR 2a BLOCKER C2 closeout + PR 2).
  *
  * On stack create/update, this Lambda runs in one invocation:
  *   1. Resolve DATABASE_URL via GetSecretValue against DATABASE_SECRET_ARN.
@@ -9,6 +9,14 @@
  *   5. Return { Status: 'SUCCESS' | 'FAILED', Data, Reason }.
  *
  * On Delete: no-op (migrations are additive-only, DB outlives the stack).
+ *
+ * PR 2 changes (design.md §3.14):
+ *   - STAGE=localstack bypasses Secrets Manager / SSM. The Lambda reads
+ *     DATABASE_URL and ADMIN_PASSWORD directly from process.env. This is
+ *     the only way LocalStack deployments work because the DynamoDB-backed
+ *     Secrets Manager / SSM services are local-only and do not survive
+ *     across deployer restarts in a predictable way.
+ *   - STAGE=dev|prod keep the existing AWS SDK resolution path.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -53,7 +61,21 @@ function runCommand(
   };
 }
 
+function resolveLocalEnvValue(name: string): string {
+  const value = process.env[name];
+  if (!value || value.length === 0) {
+    throw new Error(`${name} env var is not set`);
+  }
+  return value;
+}
+
 async function resolveDatabaseUrl(): Promise<string> {
+  // PR 2: localstack stage bypasses Secrets Manager. The deployer (or
+  // docker compose) populates DATABASE_URL directly in the Lambda env.
+  if (process.env['STAGE'] === 'localstack') {
+    return resolveLocalEnvValue('DATABASE_URL');
+  }
+
   const secretArn = process.env['DATABASE_SECRET_ARN'];
   if (!secretArn) {
     throw new Error('DATABASE_SECRET_ARN env var is not set');
@@ -89,6 +111,12 @@ async function resolveDatabaseUrl(): Promise<string> {
 }
 
 async function resolveAdminPassword(): Promise<string> {
+  // PR 2: localstack stage bypasses SSM. The deployer populates
+  // ADMIN_PASSWORD directly in the Lambda env.
+  if (process.env['STAGE'] === 'localstack') {
+    return resolveLocalEnvValue('ADMIN_PASSWORD');
+  }
+
   const paramName = process.env['ADMIN_PASSWORD_PARAM_NAME'];
   if (!paramName) {
     throw new Error('ADMIN_PASSWORD_PARAM_NAME env var is not set');

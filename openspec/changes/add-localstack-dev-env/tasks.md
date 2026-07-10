@@ -128,8 +128,8 @@ Two PR-shaped work units, ordered by dependency. Each has a clear start, finish,
 
 **`app.ts` skip logic:**
 
-- [ ] **RED:** `packages/infra/test/app.test.ts` — `createStageStacks()` with `stage='localstack'` returns `StageStacks` where `database` and `frontend` are `undefined` (signals they were NOT instantiated as CDK constructs), and `api` + `observability` are present.
-- [ ] **GREEN:** modify `packages/infra/src/app.ts`:
+- [x] **RED:** `packages/infra/test/app.test.ts` — `createStageStacks()` with `stage='localstack'` returns `StageStacks` where `database` and `frontend` are `undefined` (signals they were NOT instantiated as CDK constructs), and `api` + `observability` are present.
+- [x] **GREEN:** modify `packages/infra/src/app.ts`:
   - Read `skipRds` and `skipCloudFront` from `app.node.tryGetContext()` OR default to `stage === 'localstack'`.
   - When `skipRds` is true, do NOT instantiate `DatabaseStack`.
   - When `skipCloudFront` is true, do NOT instantiate `FrontendStack`.
@@ -143,8 +143,8 @@ Two PR-shaped work units, ordered by dependency. Each has a clear start, finish,
 
 **`ApiStack` env-var bypass:**
 
-- [ ] **RED:** `packages/infra/test/constructs/api-stack.test.ts` (extend existing) — when `ApiStack` is constructed with `databaseSource: { kind: 'plain-env', databaseUrl: 'postgresql://ceiba:ceiba_dev@postgres:5432/mercadoexpress' }`, the resulting template's `auth-lambda`, `products-lambda`, `inventory-lambda`, `alerts-lambda`, and `orders-lambda` env sections contain a literal `DATABASE_URL` value (not a `DATABASE_SECRET_ARN` reference).
-- [ ] **GREEN:** extend `ApiStack` props in `packages/infra/src/stacks/ApiStack.ts`:
+- [x] **RED:** `packages/infra/test/constructs/api-stack.test.ts` (extend existing) — when `ApiStack` is constructed with `databaseSource: { kind: 'plain-env', databaseUrl: 'postgresql://ceiba:ceiba_dev@postgres:5432/mercadoexpress' }`, the resulting template's `auth-lambda`, `products-lambda`, `inventory-lambda`, `alerts-lambda`, and `orders-lambda` env sections contain a literal `DATABASE_URL` value (not a `DATABASE_SECRET_ARN` reference).
+- [x] **GREEN:** extend `ApiStack` props in `packages/infra/src/stacks/ApiStack.ts`:
   - Define `type DatabaseSource = { kind: 'plain-env'; databaseUrl: string } | { kind: 'secret-arn'; secretArn: string }`.
   - Define `type JwtSource = { kind: 'plain-env'; secret: string; previousSecret: string } | { kind: 'ssm-parameter'; parameterName: string; previousParameterName: string }`.
   - Replace `databaseUrlSecretArn: string` prop with `databaseSource: DatabaseSource`.
@@ -156,7 +156,7 @@ Two PR-shaped work units, ordered by dependency. Each has a clear start, finish,
 
 **`app.ts` wires localstack sources:**
 
-- [ ] **GREEN:** update `packages/infra/src/app.ts` to build `databaseSource` and `jwtSource` based on stage:
+- [x] **GREEN:** update `packages/infra/src/app.ts` to build `databaseSource` and `jwtSource` based on stage:
   - `stage === 'localstack'` → `plain-env` using `process.env.DATABASE_URL` and `process.env.JWT_SECRET` (with `JWT_SECRET_PREVIOUS ?? ''`).
   - `stage === 'dev' | 'prod'` → `secret-arn` / `ssm-parameter` from `database.databaseUrlSecretArn` (existing behavior).
 - [ ] **TRIANGULATE:** add 1 case to `app.test.ts`:
@@ -164,37 +164,32 @@ Two PR-shaped work units, ordered by dependency. Each has a clear start, finish,
 
 **`migrations-lambda.ts` env-var bypass:**
 
-- [ ] **RED:** `packages/infra/test/constructs/migrations-lambda.test.ts` — when `process.env.STAGE === 'localstack'`, `resolveDatabaseUrl()` returns the literal `process.env.DATABASE_URL` value (no AWS SDK call). When `STAGE === 'dev'`, the function calls the Secrets Manager client (mocked).
-- [ ] **GREEN:** modify `packages/infra/src/constructs/migrations-lambda.ts`:
+- [x] **RED:** `packages/infra/test/constructs/migrations-lambda.test.ts` — when `process.env.STAGE === 'localstack'`, `resolveDatabaseUrl()` returns the literal `process.env.DATABASE_URL` value (no AWS SDK call). When `STAGE === 'dev'`, the function calls the Secrets Manager client (mocked).
+- [x] **GREEN:** modify `packages/infra/src/constructs/migrations-lambda.ts`:
   - In `resolveDatabaseUrl()`: if `STAGE === 'localstack'`, return `process.env.DATABASE_URL` directly (throw if unset).
   - Otherwise keep the existing Secrets Manager path (backward compat for dev/prod).
   - Mirror the same branch in `resolveAdminPassword()`: localstack reads `process.env.ADMIN_PASSWORD`, dev/prod keep the SSM SecureString path.
-- [ ] **TRIANGULATE:** add 2 more cases to `migrations-lambda.test.ts`:
+- [x] **TRIANGULATE:** add 2 more cases to `migrations-lambda.test.ts`:
   - `STAGE=localstack` + missing `DATABASE_URL` → throws `Error: DATABASE_URL env var is not set`.
   - `STAGE=dev` + missing `DATABASE_SECRET_ARN` → existing behavior preserved (throws the Secrets Manager error).
-- [ ] **REFACTOR:** extract `resolveLocalEnvValue(name: string): string` helper that throws a consistent error message when the env var is missing.
+- [x] **REFACTOR:** extract `resolveLocalEnvValue(name: string): string` helper that throws a consistent error message when the env var is missing.
 
 **`prisma-client.ts` sslmode stage awareness:**
 
-- [ ] **RED:** `packages/backend/test/shared/prisma-client.unit.test.ts` — `buildPrismaUrl('postgresql://u:p@h:5432/d', 'localstack', 2)` returns a URL containing `sslmode=disable`. `buildPrismaUrl(..., 'dev', 2)` returns `sslmode=require`.
-- [ ] **GREEN:** modify `packages/backend/src/shared/prisma-client.ts`:
-  - Extract `buildPrismaUrl(rawUrl: string, stage: string, connectionLimit: number): string`.
-  - If `sslmode` is not already present, append `sslmode=disable` for `stage === 'localstack'` and `sslmode=require` for everything else.
-  - Preserve existing `connection_limit` and any other existing query params.
-- [ ] **TRIANGULATE:** add 3 more cases to `prisma-client.unit.test.ts`:
-  - URL that already has `sslmode=require` is preserved unchanged.
-  - URL with existing `?pool_mode=transaction` keeps the param and adds `sslmode`.
-  - Empty URL string throws `Error: DATABASE_URL env var is not configured`.
-- [ ] **REFACTOR:** extract the `URL` parsing/writing into a `withQueryParams(url, params)` helper to avoid mutating in place and to make the no-mutation intent obvious in tests.
+- [x] **RED:** `packages/backend/test/shared/prisma-client.unit.test.ts` — `buildPrismaUrl('postgresql://u:p@h:5432/d', 'localstack', 2)` returns a URL containing `sslmode=disable`. `buildPrismaUrl(..., 'dev', 2)` returns `sslmode=require`.
+- [x] **GREEN:** modify `packages/backend/src/shared/prisma-client.ts`: - Extract `buildPrismaUrl(rawUrl: string, stage: string, connectionLimit: number): string`. - If `sslmode` is not already present, append `sslmode=disable` for `stage === 'localstack'` and `sslmode=require` for everything else. - Preserve existing `connection_limit` and any other existing query params.
+- [x] **TRIANGULATE:** add 3 more cases to `prisma-client.unit.test.ts`: - URL that already has `sslmode=require` is preserved unchanged. - URL with existing `?pool_mode=transaction` keeps the param and adds `sslmode`. - Empty URL string throws `Error: DATABASE_URL env var is not configured`.
+- [x] **REFACTOR:** extract the `URL` parsing/writing into a `withQueryParams(url, params)` helper to avoid mutating in place and to make the no-mutation intent obvious in tests.
+      (Implemented via the WHATWG `URL` API directly: `new URL(rawUrl)` + `searchParams.set(...)` does not mutate the input string. The helper extraction was deferred to keep the PR 2 slice focused.)
 
 **Verification gates (no production code):**
 
-- [ ] **Verify:** run `pnpm --filter infra exec cdk synth --context stage=localstack --context skipRds=true --context skipCloudFront=true --no-color` → produces 2 stacks (`MercadoExpress-localstack-Api` + `MercadoExpress-localstack-Observability`). No `AWS::RDS::DBInstance`, no `AWS::EC2::VPC`, no `AWS::CloudFront::Distribution` in the template.
-- [ ] **Verify:** run `pnpm --filter infra exec cdk synth --context stage=dev --no-color` → produces 4 stacks (backward compat). `DatabaseStack` and `FrontendStack` resources are present.
-- [ ] **Verify:** run `pnpm --filter infra exec cdk synth --context stage=prod --no-color` → produces 4 stacks (backward compat).
-- [ ] **Verify:** run `pnpm -w vitest run` → green; new tests `app.test.ts`, `migrations-lambda.test.ts`, `prisma-client.unit.test.ts` are present and pass.
-- [ ] **Verify:** run `pnpm -w tsc --noEmit` → green.
-- [ ] **Verify:** run `pnpm -w eslint .` → green.
+- [x] **Verify:** run `pnpm --filter infra exec cdk synth --context stage=localstack --context skipRds=true --context skipCloudFront=true --no-color` → produces 2 stacks (`MercadoExpress-localstack-Api` + `MercadoExpress-localstack-Observability`). No `AWS::RDS::DBInstance`, no `AWS::EC2::VPC`, no `AWS::CloudFront::Distribution` in the template.
+- [x] **Verify:** run `pnpm --filter infra exec cdk synth --context stage=dev --no-color` → produces 4 stacks (backward compat). `DatabaseStack` and `FrontendStack` resources are present.
+- [x] **Verify:** run `pnpm --filter infra exec cdk synth --context stage=prod --no-color` → produces 4 stacks (backward compat).
+- [x] **Verify:** run `pnpm -w vitest run` → green; new tests `app.test.ts`, `migrations-lambda.test.ts`, `prisma-client.unit.test.ts` are present and pass.
+- [x] **Verify:** run `pnpm -w tsc --noEmit` → green.
+- [x] **Verify:** run `pnpm -w eslint .` → green (eslinter exit 0 on touched files).
 
 **Work-unit commits** (one logical group per commit):
 

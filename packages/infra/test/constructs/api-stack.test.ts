@@ -1,5 +1,5 @@
 /**
- * RED-first CDK construct test for ApiStack (PR 1, tasks.md §2 PR 1).
+ * RED-first CDK construct test for ApiStack (PR 1 + PR 2, tasks.md §2 PR 1 + §2 PR 2).
  *
  * Asserts the bindings locked in design.md §15.2.3 (RISK-002):
  *   - HttpApi has a corsPreflight block with the 4 allow-headers and the
@@ -8,8 +8,13 @@
  *   - Reserved concurrency per stage matches config.ts.
  *   - 5 CloudWatch log groups with 7-day retention.
  *
- * RED state: ApiStack does not exist yet → import fails, suite fails.
- * GREEN state: ApiStack is added in PR 1 with the expected shape.
+ * PR 2 additions (design.md §3.11):
+ *   - `corsAllowOrigin` is the new generic prop (replaces the CloudFront-
+ *     specific `distributionDomainName`).
+ *   - `databaseSource: { kind: 'plain-env', databaseUrl }` carries the
+ *     literal URL into the Lambda env (localstack). The 5 BC Lambdas'
+ *     DATABASE_URL env value MUST equal the literal URL — NOT a Secrets
+ *     Manager ARN.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -21,8 +26,14 @@ function loadApiStackModule(): {
     app: App,
     id: string,
     props: {
-      stage: 'dev' | 'prod';
-      distributionDomainName: string;
+      stage: 'dev' | 'prod' | 'localstack';
+      corsAllowOrigin?: string;
+      distributionDomainName?: string;
+      databaseSource?:
+        { kind: 'plain-env'; databaseUrl: string } | { kind: 'secret-arn'; secretArn: string };
+      jwtSource?:
+        | { kind: 'plain-env'; secret: string; previousSecret: string }
+        | { kind: 'ssm-parameter'; parameterName: string; previousParameterName: string };
       databaseUrlSecretArn?: string;
       securityGroupId?: string;
       env?: { account: string; region: string };
@@ -228,5 +239,36 @@ describe('ApiStack', () => {
     expect(templateStr).toContain('OrdersLambda');
     // Orders is the only mutating route in orders BC (no PUT/PATCH/DELETE).
     expect(templateStr).not.toMatch(/"RouteKey":"(PUT|PATCH|DELETE)[^"]*orders/);
+  });
+
+  // PR 2 — when databaseSource is plain-env (localstack), the literal URL
+  // must land in every BC Lambda's DATABASE_URL env value, NOT a Secrets
+  // Manager ARN. RED state: ApiStack ignores databaseSource and always
+  // treats DATABASE_URL as the legacy databaseUrlSecretArn path.
+  it('PR 2 — carries DATABASE_URL as a literal URL when databaseSource.kind=plain-env', () => {
+    const literalUrl = 'postgresql://ceiba:ceiba_dev@postgres:5432/mercadoexpress';
+    const app = new App();
+    const { ApiStack } = loadApiStackModule();
+    const stack = new ApiStack(app, 'ApiStackTestPlainEnv', {
+      stage: 'localstack',
+      corsAllowOrigin: 'http://localhost:5173',
+      databaseSource: { kind: 'plain-env', databaseUrl: literalUrl },
+      jwtSource: {
+        kind: 'plain-env',
+        secret: 'dev-secret',
+        previousSecret: '',
+      },
+      env: PLACEHOLDER_ENV,
+    });
+
+    const template = Template.fromStack(stack as unknown as Stack);
+    const templateStr = JSON.stringify(template.toJSON());
+
+    // The literal URL must be present in the synthesized template (the
+    // 5 BC Lambdas share it as the DATABASE_URL env value).
+    expect(templateStr).toContain(literalUrl);
+    // The Lambda env block is plain — no Secrets Manager ARN under
+    // DATABASE_URL for localstack.
+    expect(templateStr).not.toContain('arn:aws:secretsmanager:');
   });
 });

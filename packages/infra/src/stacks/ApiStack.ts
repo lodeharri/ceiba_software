@@ -1,5 +1,5 @@
 /**
- * ApiStack (PR 1 + PR 2a, tasks.md §2 PR 1 + PR 2a).
+ * ApiStack (PR 1 + PR 2 + PR 2a, tasks.md §2 PR 1 + §2 PR 2 + PR 2a).
  *
  * Provisions:
  *   - HTTP API v2 with `corsPreflight` block (RISK-002) wired to the
@@ -13,6 +13,16 @@
  *   - JWT secret + previous-secret SSM SecureStrings (C1 closeout).
  *   - DATABASE_URL route through Secrets Manager dynamic ref (C2 closeout).
  *   - ADMIN_PASSWORD SSM SecureString (C3 closeout).
+ *
+ * PR 2 changes (design.md §3.11):
+ *   - `corsAllowOrigin` replaces the CloudFront-specific
+ *     `distributionDomainName` prop. The caller passes a fully-qualified
+ *     origin string (e.g. `https://d123.cloudfront.net` or
+ *     `http://localhost:5173`).
+ *   - `databaseSource` is a discriminated union: `{ kind: 'plain-env',
+ *     databaseUrl }` for localstack (the Lambda receives the literal URL
+ *     in its env), or `{ kind: 'secret-arn', secretArn }` for AWS stages
+ *     (the Lambda calls GetSecretValue at cold start).
  *
  * Categories BC handler is merged into the products Lambda (PR 2a
  * decision per design.md §2.1) — both share the same Prisma client,
@@ -42,10 +52,48 @@ function backendHandlerPath(handlerFile: string): string {
 }
 export interface ApiStackProps extends StackProps {
   stage: Stage;
-  distributionDomainName: string;
-  databaseUrlSecretArn: string;
-  securityGroupId: string;
+  /**
+   * Fully-qualified CORS allow-origin (e.g. `https://d123.cloudfront.net`
+   * for AWS, `http://localhost:5173` for localstack). Renamed from the
+   * CloudFront-specific `distributionDomainName` so the same prop works
+   * for non-CloudFront origins.
+   */
+  corsAllowOrigin?: string | undefined;
+  /**
+   * PR 2: how the BC Lambdas receive `DATABASE_URL`. `plain-env` carries
+   * the literal URL in the Lambda env (localstack); `secret-arn` carries
+   * the Secrets Manager ARN so the Lambda resolves the URL at cold start
+   * via GetSecretValue (dev/prod). Defaults to a `secret-arn` source
+   * built from the legacy `databaseUrlSecretArn` prop for backward compat.
+   */
+  databaseSource?: DatabaseSource | undefined;
+  /**
+   * PR 2: how the BC Lambdas receive `JWT_SECRET` / `JWT_SECRET_PREVIOUS`.
+   * `plain-env` carries the literals (localstack); `ssm-parameter` carries
+   * SSM SecureString parameter names that the Lambda resolves at cold
+   * start via ssm:GetParameter (dev/prod). When omitted, an SSM parameter
+   * is provisioned and a matching `ssm-parameter` source is built (PR 1
+   * default behavior).
+   */
+  jwtSource?: JwtSource | undefined;
+  /** Database security group id (passed through from DatabaseStack). */
+  securityGroupId?: string | undefined;
+  /** @deprecated Use `corsAllowOrigin` (full origin string). Kept for
+   *  callers that have not migrated yet; when both are provided,
+   *  `corsAllowOrigin` wins. */
+  distributionDomainName?: string | undefined;
+  /** @deprecated Use `databaseSource.kind === 'secret-arn'`. Kept for
+   *  callers that have not migrated yet; when `databaseSource` is
+   *  absent, a secret-arn source is built from this ARN. */
+  databaseUrlSecretArn?: string | undefined;
 }
+
+export type DatabaseSource =
+  { kind: 'plain-env'; databaseUrl: string } | { kind: 'secret-arn'; secretArn: string };
+
+export type JwtSource =
+  | { kind: 'plain-env'; secret: string; previousSecret: string }
+  | { kind: 'ssm-parameter'; parameterName: string; previousParameterName: string };
 
 interface LambdaSpec {
   id: string;
@@ -133,10 +181,23 @@ export class ApiStack extends Stack {
   public constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
 
-    const { stage, distributionDomainName, databaseUrlSecretArn, securityGroupId } = props;
+    const {
+      stage,
+      corsAllowOrigin: explicitCorsAllowOrigin,
+      distributionDomainName,
+      databaseSource: explicitDatabaseSource,
+      databaseUrlSecretArn,
+      jwtSource: explicitJwtSource,
+      securityGroupId,
+    } = props;
 
-    // CORS allow-origin = CloudFront distribution domain (RISK-002).
-    const corsAllowOrigins = [`https://${distributionDomainName}`];
+    // CORS allow-origin: prefer the explicit full origin (PR 2 contract);
+    // fall back to the CloudFront-specific distributionDomainName for
+    // callers that have not migrated to the new prop yet.
+    const corsAllowOrigin =
+      explicitCorsAllowOrigin ??
+      (distributionDomainName ? `https://${distributionDomainName}` : '');
+    const corsAllowOrigins = [corsAllowOrigin];
 
     this.httpApi = new apigwv2.HttpApi(this, 'HttpApi', {
       apiName: `MercadoExpress-${stage}-HttpApi`,
@@ -164,18 +225,53 @@ export class ApiStack extends Stack {
       };
     }
 
-    const jwtSecret = new ssm.StringParameter(this, 'JwtSecret', {
-      parameterName: `/MercadoExpress/${stage}/jwt-secret`,
-      stringValue: 'placeholder-replaced-by-ops',
-      description: `MercadoExpress ${stage} JWT secret (HS256). Replace via the rotate-admin-password runbook.`,
-      type: ssm.ParameterType.SECURE_STRING,
-    });
-    const jwtSecretPrevious = new ssm.StringParameter(this, 'JwtSecretPrevious', {
-      parameterName: `/MercadoExpress/${stage}/jwt-secret-previous`,
-      stringValue: 'placeholder-empty-on-first-deploy',
-      description: `MercadoExpress ${stage} JWT previous secret (HS256) — used during the rotation overlap window.`,
-      type: ssm.ParameterType.SECURE_STRING,
-    });
+    // PR 2: branch the DATABASE_URL / JWT_SECRET wiring at the adapter boundary.
+    // `plain-env` carries literal values (localstack); the AWS branches either
+    // pass a Secrets Manager ARN or an SSM SecureString parameter name that
+    // the Lambda resolves at cold start via the AWS SDK.
+    const databaseSource: DatabaseSource =
+      explicitDatabaseSource ??
+      (databaseUrlSecretArn !== undefined
+        ? { kind: 'secret-arn', secretArn: databaseUrlSecretArn }
+        : { kind: 'secret-arn', secretArn: '' });
+    const databaseUrlEnv =
+      databaseSource.kind === 'plain-env' ? databaseSource.databaseUrl : databaseSource.secretArn;
+
+    const isPlainEnvJwt = explicitJwtSource?.kind === 'plain-env';
+    const jwtSecret = isPlainEnvJwt
+      ? null
+      : new ssm.StringParameter(this, 'JwtSecret', {
+          parameterName: `/MercadoExpress/${stage}/jwt-secret`,
+          stringValue: 'placeholder-replaced-by-ops',
+          description: `MercadoExpress ${stage} JWT secret (HS256). Replace via the rotate-admin-password runbook.`,
+          type: ssm.ParameterType.SECURE_STRING,
+        });
+    const jwtSecretPrevious = isPlainEnvJwt
+      ? null
+      : new ssm.StringParameter(this, 'JwtSecretPrevious', {
+          parameterName: `/MercadoExpress/${stage}/jwt-secret-previous`,
+          stringValue: 'placeholder-empty-on-first-deploy',
+          description: `MercadoExpress ${stage} JWT previous secret (HS256) — used during the rotation overlap window.`,
+          type: ssm.ParameterType.SECURE_STRING,
+        });
+
+    const jwtSource: JwtSource =
+      explicitJwtSource ??
+      (jwtSecret && jwtSecretPrevious
+        ? {
+            kind: 'ssm-parameter',
+            parameterName: jwtSecret.parameterName,
+            previousParameterName: jwtSecretPrevious.parameterName,
+          }
+        : {
+            kind: 'ssm-parameter',
+            parameterName: `/MercadoExpress/${stage}/jwt-secret`,
+            previousParameterName: `/MercadoExpress/${stage}/jwt-secret-previous`,
+          });
+    const jwtSecretEnv =
+      jwtSource.kind === 'plain-env' ? jwtSource.secret : jwtSource.parameterName;
+    const jwtSecretPreviousEnv =
+      jwtSource.kind === 'plain-env' ? jwtSource.previousSecret : jwtSource.previousParameterName;
 
     const reservedConcurrency = infraConfig.reservedConcurrencyByStage[stage];
 
@@ -209,9 +305,9 @@ export class ApiStack extends Stack {
         },
         environment: {
           STAGE: stage,
-          DATABASE_URL: databaseUrlSecretArn,
-          JWT_SECRET: jwtSecret.parameterName,
-          JWT_SECRET_PREVIOUS: jwtSecretPrevious.parameterName,
+          DATABASE_URL: databaseUrlEnv,
+          JWT_SECRET: jwtSecretEnv,
+          JWT_SECRET_PREVIOUS: jwtSecretPreviousEnv,
           JWT_OVERLAP_SECONDS: '3600',
           TRUSTED_PROXY_DEPTH: '0',
           LOG_LEVEL: 'info',
@@ -247,7 +343,7 @@ export class ApiStack extends Stack {
       exportName: `MercadoExpress-${stage}-HttpApiUrl`,
     });
     new CfnOutput(this, 'SecurityGroupIdImport', {
-      value: securityGroupId,
+      value: securityGroupId ?? '',
       description: 'Database security group id (passed through from DatabaseStack)',
     });
   }
