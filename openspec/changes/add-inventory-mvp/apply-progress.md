@@ -1039,3 +1039,85 @@ Pages: Login/ProductsList/ProductCreate/ProductDetail/MovementsList/RecordMoveme
 - @axe-core/playwright accessibility on DashboardLayout + LoginPage
 - RISK-S05 FlagService + useFlagsStore
 - XSS e2e scenario (Playwright)
+
+---
+
+## Gap closure — Tasks A: Runbooks/scripts (KL-01..KL-05)
+
+- **Phase:** sdd-apply (gap-closure batch)
+- **Author:** Harri (autonomous sdd-apply executor)
+- **Timestamp:** 2026-07-10
+- **Scope:** 5 cross-cutting scripts in `scripts/` (KL-01..KL-05 from
+  tasks.md §3) that close the WARNING items recorded in
+  `archive-report.md` §7.4 and §7.5.
+
+### Files created
+
+| KL  | Path                                    | Type-check | Runtime (from `packages/backend`)                                                                                              |
+| --- | --------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 01  | `scripts/rotate-admin-password.ts`      | clean      | loads Prisma client, attempts DB connection (missing `DATABASE_URL` → exits 1 as designed)                                     |
+| 02  | `scripts/verify-locked-decisions.ts`    | clean      | **all locked-decision checks passed**, exit 0                                                                                  |
+| 03  | `scripts/check-no-secrets.ts`           | clean      | scans ~420 files; **no real secrets detected**, exit 0 (placeholder-text false-positives are filtered; any future hit exits 1) |
+| 04  | `scripts/verify-error-codes.ts`         | clean      | 23 ErrorCode members known; every backend code resolves to an es-CO + en i18n key, exit 0                                      |
+| 05  | `scripts/verify-additive-migrations.ts` | clean      | 3 migrations scanned, all additive, exit 0                                                                                     |
+
+### Persisted task checkboxes
+
+`openspec/changes/add-inventory-mvp/tasks.md` updated:
+
+- L130: KL-01 (rotate-admin-password) → `[x]` (script in place; SSM-and-seed runbook remains a separate ops document per tasks.md)
+- L131: KL-02 (verify-locked-decisions) → `[x]`
+- L132: KL-03 (check-no-secrets) → `[x]`
+- L633: KL-02 (cross-cutting variant) → `[x]`
+- L645: KL-03 (cross-cutting variant) → `[x]`
+- L646: KL-04 (verify-error-codes) → `[x]`
+- L647: KL-05 (verify-additive-migrations) → `[x]`
+
+### Design vs. implementation
+
+The user-supplied brief asked for a TypeScript script per KL-01 instead of
+the markdown runbook originally scoped at `tasks.md:130`. Decision:
+deliver the script as requested; the SSM + seed-CustomResource + login
+verification steps that the markdown version would have documented are
+referenced from the script's success message and remain available to be
+written as a follow-up runbook.
+
+The original spec called for shell variants (`.sh`); the implementation
+uses TypeScript with `tsc --strict` (per `openspec/config.yaml →
+stack.typescript.strict`). All five scripts:
+
+- import via ESM (Node 20+, ES2022);
+- exit 0 on pass, 1 on fail;
+- run with `pnpm --filter backend exec tsx scripts/<name>.ts` (the
+  `tsx` devDep lives in `packages/backend`; the script files sit at the
+  repo root as the rest of the SDD cross-cutting layer does);
+- have NO new top-level dependencies.
+
+### Wire-up status
+
+- `verify-locked-decisions.ts`, `verify-additive-migrations.ts`,
+  `verify-error-codes.ts`, and `check-no-secrets.ts` are all GREEN on
+  this tree (exit 0). The plain-data check + regex combos are tuned to
+  avoid the most common false positives (test fixtures, schema
+  placeholders, template-literal DB connection strings, documentation
+  threat-model URLs).
+- `verify-error-codes.ts` uses a per-code override table that maps
+  each `ErrorCode` member to the existing i18n key path
+  (`error.*`, `auth.*`, `<bc>.*`). A follow-up may move that table into
+  a code-generated manifest alongside the `ErrorCode` registry.
+- `rotate-admin-password.ts` requires a live `DATABASE_URL` at runtime.
+  No DB was started for this gap-closure batch; the script's behavior
+  was verified by observing a real Prisma connection attempt that
+  fails on the absence of a `DATABASE_URL` (exit 1, as designed) and
+  on an unreachable host (exit 1, as designed).
+
+### Known follow-ups
+
+- Add the markdown ops runbook (`runbook/rotate-admin-password.md`) per
+  the original RISK-W04 ticket. Script is sufficient for ad-hoc rotation;
+  the markdown runbook is needed for the SSM ↔ DB rotation dance.
+- Wire all 5 scripts into `ci.yml` after `type-check` and `lint`.
+- If new threat-model URLs are added to `openspec/changes/*/reviews/`
+  they may need to be added to the `check-no-secrets.ts` URL
+  allowlist; the heuristic currently treats `*.example.*` and common
+  documentation hosts as benign.

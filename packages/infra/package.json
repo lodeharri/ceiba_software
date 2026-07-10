@@ -13,6 +13,8 @@
     "test:watch": "vitest",
     "synth": "cdk synth --all --no-color",
     "synth:dev": "cdk synth -c stage=dev --no-color",
+    "synth:prod": "cdk synth -c stage=prod --no-color",
+    "synth:localstack": "cdk synth -c stage=localstack --no-color",
     "deploy:dev": "cdk deploy -c stage=dev --require-approval never"
   },
   "dependencies": {
