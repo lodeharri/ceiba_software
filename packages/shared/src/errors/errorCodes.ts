@@ -6,10 +6,23 @@ import { z } from 'zod';
  *
  * Backend handlers and frontend services MUST reference this enum; the
  * orchestrator-supplied `scripts/verify-error-codes.ts` (PR 1) enforces it.
+ *
+ * Implementation note: we expose the values as both a `const` object AND a
+ * matching `type`. The runtime values come from the const, the type-level
+ * union comes from the type. Consumers should:
+ *
+ *   import { ErrorCode, type ErrorCode as ErrorCodeT } from '@mercadoexpress/shared';
+ *   // value position: ErrorCode.NOT_FOUND
+ *   // type position:  ErrorCodeT
+ *
+ * The dual export avoids the "cannot be used as a value because it was
+ * exported using 'export type'" issue that arises when the same name is
+ * used for both a `const` and a `type` declaration in a module.
  */
 export const ErrorCode = {
   UNAUTHORIZED: 'UNAUTHORIZED',
   TOKEN_EXPIRED: 'TOKEN_EXPIRED',
+  INVALID_TOKEN: 'INVALID_TOKEN',
   INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
   RATE_LIMITED: 'RATE_LIMITED',
   VALIDATION_ERROR: 'VALIDATION_ERROR',
@@ -33,4 +46,8 @@ export const ErrorCode = {
 
 export const errorCodeSchema = z.enum(Object.values(ErrorCode) as [string, ...string[]]);
 
-export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
+/**
+ * The union of all valid error code string literals. Imported separately
+ * to avoid the const/type name collision described in the module header.
+ */
+export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode];
