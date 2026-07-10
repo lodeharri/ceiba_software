@@ -92,16 +92,24 @@ const LAMBDAS: readonly LambdaSpec[] = [
   {
     id: 'InventoryLambda',
     functionName: 'inventory-lambda',
-    entry: backendHandlerPath('inventory/interface/handlers/record-movement.ts'),
+    entry: backendHandlerPath('inventory/interface/handlers/bootstrap.ts'),
     requiresJwt: true,
-    routes: [{ path: '/api/v1/inventory/{proxy+}', methods: [apigwv2.HttpMethod.ANY] }],
+    routes: [
+      {
+        path: '/api/v1/products/{id}/movements',
+        methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.GET],
+      },
+    ],
   },
   {
     id: 'AlertsLambda',
     functionName: 'alerts-lambda',
-    entry: backendHandlerPath('alerts/interface/handlers/list-alerts.ts'),
+    entry: backendHandlerPath('alerts/interface/handlers/bootstrap.ts'),
     requiresJwt: true,
-    routes: [{ path: '/api/v1/alerts/{proxy+}', methods: [apigwv2.HttpMethod.ANY] }],
+    routes: [
+      { path: '/api/v1/alerts', methods: [apigwv2.HttpMethod.GET] },
+      { path: '/api/v1/alerts/{id}', methods: [apigwv2.HttpMethod.GET] },
+    ],
   },
   {
     id: 'OrdersLambda',

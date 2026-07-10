@@ -162,4 +162,46 @@ describe('ApiStack', () => {
     expect(templateStr).toContain('GET /api/v1/products');
     expect(templateStr).toContain('PATCH /api/v1/products/{id}');
   });
+
+  it('routes the PR 2b inventory endpoints (POST + GET /products/{id}/movements)', () => {
+    const app = new App();
+    const { ApiStack } = loadApiStackModule();
+    const stack = new ApiStack(app, 'ApiStackTestInventory', {
+      stage: 'dev',
+      distributionDomainName: 'd111111abcdef8.cloudfront.net',
+      databaseUrlSecretArn: 'arn:aws:ssm:us-east-1:000000000000:parameter/db',
+      securityGroupId: 'sg-00000000',
+      env: PLACEHOLDER_ENV,
+    });
+
+    const template = Template.fromStack(stack as unknown as Stack);
+    const templateStr = JSON.stringify(template.toJSON());
+
+    expect(templateStr).toContain('/api/v1/products/{id}/movements');
+    expect(templateStr).toContain('InventoryLambda');
+    // No ANY method — only POST and GET are allowed for movements
+    expect(templateStr).not.toMatch(/"ANY".*movements/);
+  });
+
+  it('routes the PR 2b alerts endpoints (GET /alerts + GET /alerts/{id}) and asserts absence of mutating methods', () => {
+    const app = new App();
+    const { ApiStack } = loadApiStackModule();
+    const stack = new ApiStack(app, 'ApiStackTestAlerts', {
+      stage: 'dev',
+      distributionDomainName: 'd111111abcdef8.cloudfront.net',
+      databaseUrlSecretArn: 'arn:aws:ssm:us-east-1:000000000000:parameter/db',
+      securityGroupId: 'sg-00000000',
+      env: PLACEHOLDER_ENV,
+    });
+
+    const template = Template.fromStack(stack as unknown as Stack);
+    const templateStr = JSON.stringify(template.toJSON());
+
+    expect(templateStr).toContain('/api/v1/alerts');
+    expect(templateStr).toContain('/api/v1/alerts/{id}');
+    expect(templateStr).toContain('AlertsLambda');
+    // Assert ABSENCE of POST/PUT/PATCH/DELETE under /alerts — only GET routes
+    // Anchor within RouteKey quoted value using [^"]* to avoid cross-field matches
+    expect(templateStr).not.toMatch(/"RouteKey":"(POST|PUT|PATCH|DELETE)[^"]*alerts/);
+  });
 });
