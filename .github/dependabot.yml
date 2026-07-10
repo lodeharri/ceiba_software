@@ -1,0 +1,27 @@
+# Dependabot weekly updates (RISK-W02 follow-up).
+# Both ecosystem groups are tracked: the workspace's pnpm deps and
+# the GitHub Actions pins in .github/workflows/*.yml.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+    open-pull-requests-limit: 5
+    groups:
+      aws-cdk:
+        patterns:
+          - aws-cdk*
+      pino:
+        patterns:
+          - pino*
+          - pino-pretty*
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+    open-pull-requests-limit: 3

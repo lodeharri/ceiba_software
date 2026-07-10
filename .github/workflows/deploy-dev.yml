@@ -1,0 +1,56 @@
+name: deploy-dev
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel a previous dev deploy when a new commit lands. Dev is the
+# "always-green HEAD" environment; serial deploys are acceptable.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: cdk deploy MercadoExpress-dev
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: dev
+      url: https://d111111abcdef8.cloudfront.net
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # AWS OIDC: assume the deploy role using the GitHub-managed OIDC
+      # provider. Requires `OIDC_ROLE_ARN` to be set in the GitHub
+      # environment secrets (per runbook/oidc-bootstrap.md, PR 4).
+      - name: Configure AWS credentials (OIDC)
+        if: ${{ env.OIDC_ROLE_ARN != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.OIDC_ROLE_ARN }}
+          aws-region: us-east-1
+        env:
+          OIDC_ROLE_ARN: ${{ secrets.OIDC_ROLE_ARN }}
+
+      # Fail loudly when the OIDC role is not configured. The workflow
+      # file itself ships in PR 1; runtime deploys require manual
+      # bootstrap that lands in PR 4.
+      - name: Verify AWS credentials
+        run: aws sts get-caller-identity
+
+      - name: cdk deploy MercadoExpress-dev
+        run: pnpm --filter infra exec cdk deploy MercadoExpress-dev --require-approval never

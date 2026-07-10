@@ -1,0 +1,70 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel in-progress runs when a new commit lands on the same branch
+# (per design.md §16.1 — concurrency hygiene for fast feedback).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    name: install (pnpm)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+  verify:
+    name: verify (${{ matrix.name }})
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: type-check
+            run: pnpm -w tsc --noEmit
+          - name: lint
+            run: pnpm -w eslint .
+          - name: format-check
+            run: pnpm -w prettier --check .
+          - name: test
+            run: pnpm -w vitest run
+          - name: build
+            run: pnpm -w -r build
+          - name: audit
+            # PR 1 admits only moderate+low CVEs in production deps.
+            # A `high` audit block is documented as a known issue for PR 4.
+            run: pnpm audit --prod --audit-level=high
+          - name: cdk-synth
+            run: pnpm --filter infra exec cdk synth --all --no-color
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: ${{ matrix.name }}
+        run: ${{ matrix.run }}
