@@ -4,13 +4,10 @@ set -e
 echo "🔧 Resolved env vars:"
 echo "  STAGE=${STAGE:-localstack}"
 echo "  AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL}"
-echo "  DATABASE_URL=${DATABASE_URL}"
+DB_HOST=$(echo "${DATABASE_URL}" | sed -E 's|.*@([^/]+).*|\1|')
+echo "  DB_HOST=${DB_HOST}"
 
-echo "⏳ Waiting for LocalStack on ${LOCALSTACK_HOST}:${LOCALSTACK_PORT}..."
-timeout 300 bash -c "until curl -sf http://${LOCALSTACK_HOST}:${LOCALSTACK_PORT}/_localstack/health > /dev/null; do sleep 2; done"
-
-echo "⏳ Waiting for PostgreSQL..."
-timeout 60 bash -c "until pg_isready -h postgres -p \${POSTGRES_PORT:-5432} -U \${POSTGRES_USER:-ceiba}; do sleep 2; done"
+/docker/wait-for-services.sh
 
 cd /app/packages/infra
 
@@ -26,7 +23,12 @@ AWS_ENDPOINT_URL="${AWS_ENDPOINT_URL}" \
   --outputs-file="${CDK_OUTPUTS_FILE:-/shared/cdk-outputs.json}" \
   MercadoExpress-localstack-Api \
   MercadoExpress-localstack-Observability \
-  2>&1 | tee "${SHARED_DATA_DIR:-/shared}/deploy.log" || echo "⚠️ Some stacks failed (this may be expected)"
+  2>&1 | tee "${SHARED_DATA_DIR:-/shared}/deploy.log"
+DEPLOY_EXIT=${PIPESTATUS[0]}
+if [ $DEPLOY_EXIT -ne 0 ]; then
+  echo "❌ CDK deploy failed with exit $DEPLOY_EXIT"
+  exit 1
+fi
 
 # Extraer API URL del output
 API_URL=$(cat "${CDK_OUTPUTS_FILE:-/shared/cdk-outputs.json}" 2>/dev/null | python3 -c "

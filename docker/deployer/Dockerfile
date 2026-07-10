@@ -20,4 +20,7 @@ RUN pnpm build
 COPY docker/deployer/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+COPY docker/deployer/wait-for-services.sh /docker/wait-for-services.sh
+RUN chmod +x /docker/wait-for-services.sh
+
 ENTRYPOINT ["/entrypoint.sh"]
