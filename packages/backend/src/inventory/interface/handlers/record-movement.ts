@@ -26,6 +26,12 @@ class ValidationError extends BaseDomainError {
   }
 }
 
+class UnauthorizedError extends BaseDomainError {
+  constructor(message: string) {
+    super({ code: ErrorCode.UNAUTHORIZED, httpStatus: 401, message });
+  }
+}
+
 // ── Body schema ──
 
 interface RecordMovementBody {
@@ -67,23 +73,24 @@ function parseBody(raw: string | undefined): RecordMovementBody {
 // ── User ID extraction ──
 
 /**
- * Extracts the `sub` claim from a Bearer JWT, or returns `'system'` when
- * no token is present (tests, local dev). In production the dispatcher
- * verifies the JWT before routing to this handler, so we only decode.
+ * Extracts the `sub` claim from a Bearer JWT. Throws 401 Unauthorized
+ * if no token is present or the claim is missing.
  */
 function getUserId(event: APIGatewayProxyEventV2): string {
   const raw = (event.headers?.['authorization'] ?? event.headers?.['Authorization']) as
     string | undefined;
-  if (!raw) return 'system';
+  if (!raw) throw new UnauthorizedError('Missing authorization token.');
   const token = raw.replace(/^Bearer\s+/i, '').trim();
-  if (!token) return 'system';
+  if (!token) throw new UnauthorizedError('Missing authorization token.');
   try {
     const payload = JSON.parse(
       Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8'),
     );
-    return typeof payload.sub === 'string' && payload.sub.length > 0 ? payload.sub : 'system';
-  } catch {
-    return 'system';
+    if (typeof payload.sub === 'string' && payload.sub.length > 0) return payload.sub;
+    throw new UnauthorizedError('Token missing subject claim.');
+  } catch (e) {
+    if (e instanceof BaseDomainError) throw e;
+    throw new UnauthorizedError('Invalid authorization token.');
   }
 }
 

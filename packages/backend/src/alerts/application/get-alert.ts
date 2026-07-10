@@ -8,6 +8,7 @@ import type { AlertRepository } from '../domain/ports/alert-repository.js';
 import type { ProductReadPort, ProductSnapshot } from '../domain/ports/product-read-port.js';
 import type { AlertProps } from '../domain/alert.js';
 import { AlertNotFoundError } from '../domain/errors/alert-not-found.js';
+import { AlertProductInconsistencyError } from '../domain/errors/alert-product-inconsistency.js';
 
 export interface GetAlertInput {
   id: string;
@@ -32,7 +33,7 @@ export class GetAlert {
 
     const product = await this.productRead.findById(alert.productId);
     if (!product) {
-      throw new AlertNotFoundError(input.id);
+      throw new AlertProductInconsistencyError(alert.id, alert.productId);
     }
 
     return { alert, product };

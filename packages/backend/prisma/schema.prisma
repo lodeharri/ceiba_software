@@ -135,6 +135,7 @@ model StockMovement {
 model Alert {
   id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   productId   String      @map("product_id") @db.Uuid
+  type        String      @default("STOCK_BAJO")
   status      AlertStatus @default(ACTIVA)
   resolvedAt  DateTime?   @map("resolved_at") @db.Timestamptz(6)
   createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)

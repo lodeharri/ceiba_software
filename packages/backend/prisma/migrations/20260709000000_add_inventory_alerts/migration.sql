@@ -24,6 +24,7 @@ CREATE TABLE "stock_movements" (
 CREATE TABLE "alerts" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "product_id" UUID NOT NULL,
+    "type" VARCHAR(50) NOT NULL DEFAULT 'STOCK_BAJO',
     "status" "AlertStatus" NOT NULL DEFAULT 'ACTIVA',
     "resolved_at" TIMESTAMPTZ(6),
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,

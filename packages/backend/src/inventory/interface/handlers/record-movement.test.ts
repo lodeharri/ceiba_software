@@ -23,6 +23,13 @@ vi.mock('../../bootstrap.js', () => {
 const { handler } = await import('./record-movement.js');
 const { _getMockRecord, _resetMock } = await import('../../bootstrap.js');
 
+/** Create a fake JWT with the given sub claim (no signature verification in handler). */
+function fakeJwt(sub = '11111111-1111-4111-8111-111111111111'): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ sub, iat: Date.now() })).toString('base64url');
+  return `${header}.${payload}.sig`;
+}
+
 function makeEvent(overrides: Partial<APIGatewayProxyEventV2> = {}): APIGatewayProxyEventV2 {
   return {
     requestContext: {
@@ -34,7 +41,7 @@ function makeEvent(overrides: Partial<APIGatewayProxyEventV2> = {}): APIGatewayP
         userAgent: 'test',
       },
     },
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${fakeJwt()}` },
     body: JSON.stringify({ type: 'ENTRADA', quantity: 10, reason: 'Reposición' }),
     rawPath: '/api/v1/products/11111111-1111-4111-8111-111111111111/movements',
     rawQueryString: '',
@@ -98,6 +105,15 @@ describe('POST /products/{id}/movements handler', () => {
     expect(body.code).toBe(ErrorCode.NOT_FOUND);
   });
 
+  it('returns 401 when no authorization token is provided', async () => {
+    const event = makeEvent({ headers: { 'content-type': 'application/json' } });
+    const result = await handler(event, {} as never, () => {});
+
+    expect(result.statusCode).toBe(401);
+    const body = JSON.parse(result.body as string);
+    expect(body.code).toBe(ErrorCode.UNAUTHORIZED);
+  });
+
   it('returns 400 for malformed product ID in path', async () => {
     const event = makeEvent({ rawPath: '/api/v1/products/bad-id/movements' });
     const result = await handler(event, {} as never, () => {});
@@ -110,7 +126,13 @@ describe('POST /products/{id}/movements handler', () => {
   it('includes X-Request-Id in response headers', async () => {
     _getMockRecord().mockResolvedValue({ movementId: 'm1', stockAfter: 20 });
 
-    const event = makeEvent({ headers: { 'x-request-id': 'req-123' } });
+    const event = makeEvent({
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${fakeJwt()}`,
+        'x-request-id': 'req-123',
+      },
+    });
     const result = await handler(event, {} as never, () => {});
 
     expect(result.headers).toBeDefined();

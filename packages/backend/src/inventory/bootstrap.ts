@@ -45,9 +45,11 @@ const noopAlertCloser: AlertCloserPort = {
   },
 };
 
-// ── Singleton ──
+// ── Singleton via globalThis (same pattern as alerts BC) ──
 
-let _instance: InventoryBootstrap | null = null;
+interface GlobalWithInventory {
+  __mercadoExpressInventory?: InventoryBootstrap;
+}
 
 /**
  * Initialises the inventory bootstrap.
@@ -57,6 +59,11 @@ let _instance: InventoryBootstrap | null = null;
  *                     adapter is wired in Work Unit 3.
  */
 export function bootstrapInventory(alertCloser?: AlertCloserPort): InventoryBootstrap {
+  const g = globalThis as GlobalWithInventory;
+  if (g.__mercadoExpressInventory) {
+    return g.__mercadoExpressInventory;
+  }
+
   const prisma = getPrismaClient();
   const logger = createLogger().child({ bc: 'inventory' });
   const stockMovementRepository = new PrismaStockMovementRepository(
@@ -71,21 +78,14 @@ export function bootstrapInventory(alertCloser?: AlertCloserPort): InventoryBoot
     stockMovementRepository,
   };
 
-  _instance = instance;
+  g.__mercadoExpressInventory = instance;
   return instance;
 }
 
 /**
- * Returns the singleton bootstrap instance. Throws if not yet initialised.
- *
- * Routes that need bootstrap dependencies call this; the Lambda entry
- * point should call `bootstrapInventory()` before any handler runs.
+ * Returns the singleton bootstrap instance, auto-initialising if needed.
+ * Handlers import this — no separate bootstrap call required.
  */
 export function getInventoryBootstrap(): InventoryBootstrap {
-  if (!_instance) {
-    throw new Error(
-      'InventoryBootstrap not initialised. Call bootstrapInventory() before handling requests.',
-    );
-  }
-  return _instance;
+  return bootstrapInventory();
 }

@@ -73,20 +73,23 @@ async function openAlertIfAbsent(tx: TxClient, productId: string): Promise<void>
       data: {
         id: randomUUID(),
         productId,
+        type: 'STOCK_BAJO',
         status: 'ACTIVA',
         createdAt: new Date(),
       },
     });
   } catch (e: unknown) {
-    // P2002 = unique_violation from BR-4 partial index → swallow
+    // P2002 = unique_violation from BR-4 partial index → swallow.
+    // ALL other errors (including network/connection) → rethrow.
     if (
       typeof e === 'object' &&
       e !== null &&
       'code' in e &&
-      (e as { code: string }).code !== 'P2002'
+      (e as { code: string }).code === 'P2002'
     ) {
-      throw e;
+      return;
     }
+    throw e;
   }
 }
 
