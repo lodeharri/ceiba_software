@@ -18,12 +18,21 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { getPrismaClient } from '../../src/shared/prisma-client.js';
+import type { PrismaClient } from '@prisma/client';
+
+/**
+ * Local mirror of the source-file `GlobalWithPrisma` interface.
+ * The source declares it as a private type; tests get their own copy
+ * so accessing the cache key stays type-safe without an `as any` cast.
+ */
+interface GlobalWithPrisma {
+  __mercadoExpressPrisma?: PrismaClient | undefined;
+}
 
 describe('getPrismaClient — BLOCKER C3 closeout', () => {
   // Reset the global singleton between tests.
   afterEach(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    delete (globalThis as any).__mercadoExpressPrisma;
+    delete (globalThis as GlobalWithPrisma).__mercadoExpressPrisma;
   });
 
   it('does not call createStubClient (stub is removed)', async () => {

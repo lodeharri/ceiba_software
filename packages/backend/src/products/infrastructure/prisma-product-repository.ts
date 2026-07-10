@@ -56,6 +56,7 @@ export interface ProductPrisma {
     }): Promise<PrismaProductRow>;
     findMany(args: {
       where: {
+        id?: { in: string[] };
         categoryId?: string;
         supplier?: { contains: string };
         stock?: { gte?: number; lte?: number };
@@ -104,7 +105,7 @@ export class PrismaProductRepository implements ProductRepository {
   async list(opts: ListOptions): Promise<Page<ProductProps>> {
     const page = Math.max(1, opts.page);
     const size = Math.max(1, Math.min(100, opts.size));
-    const where = buildWhere(opts.filters);
+    const where = buildWhere(opts.filters, opts.productIds);
     const [items, total] = await Promise.all([
       this.prisma.product.findMany({
         where,
@@ -146,8 +147,18 @@ function toProps(row: PrismaProductRow): ProductProps {
 
 function buildWhere(
   f?: ProductFilters,
+  productIds?: readonly string[] | undefined,
 ): Parameters<ProductPrisma['product']['findMany']>[0]['where'] {
   const where: Parameters<ProductPrisma['product']['findMany']>[0]['where'] = {};
+  if (productIds !== undefined) {
+    // KL-13: caller narrowed the list to the products that have an
+    // active alert (resolved via AlertReadModelPort). Empty array
+    // means "narrow to no rows" — the user spec asserts that when
+    // no product has an active alert, the result is empty (not
+    // "all products"). Prisma's runtime returns [] for
+    // `id: { in: [] }` so this is safe.
+    where.id = { in: [...productIds] };
+  }
   if (f?.categoryId) where.categoryId = f.categoryId;
   if (f?.supplier) where.supplier = { contains: f.supplier };
   if (f?.minStock !== undefined || f?.maxStock !== undefined) {
@@ -155,6 +166,5 @@ function buildWhere(
     if (f.minStock !== undefined) where.stock.gte = f.minStock;
     if (f.maxStock !== undefined) where.stock.lte = f.maxStock;
   }
-  // `hasActiveAlert` is PR 2b territory; ignore here.
   return where;
 }

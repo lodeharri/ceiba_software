@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { PostgresRateLimiter, type RateLimiterPrisma } from './postgres-rate-limiter.js';
 
 interface Row {
@@ -89,5 +89,31 @@ describe('PostgresRateLimiter', () => {
     const other = await limiter.check('5.6.7.8', 'admin');
     expect(other.count).toBe(0);
     expect(other.blockedUntil).toBeNull();
+  });
+
+  it('resets the counter after window expiry (fake timers)', async () => {
+    vi.useFakeTimers();
+    try {
+      const { prisma } = makeFakePrisma();
+      const limiter = new PostgresRateLimiter(prisma, { threshold: 5, windowSeconds: 900 });
+
+      // 5 failures → blocked
+      let decision = await limiter.recordFailure('1.2.3.4', 'admin');
+      for (let i = 0; i < 4; i++) {
+        decision = await limiter.recordFailure('1.2.3.4', 'admin');
+      }
+      expect(decision.count).toBe(5);
+      expect(decision.blockedUntil).toBeInstanceOf(Date);
+
+      // Advance past the 900s window
+      vi.advanceTimersByTime(900 * 1000 + 1);
+
+      // Counter should be reset
+      const check = await limiter.check('1.2.3.4', 'admin');
+      expect(check.count).toBe(0);
+      expect(check.blockedUntil).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -12,7 +12,11 @@ export type { ProductProps };
 export interface ProductFilters {
   categoryId?: string;
   supplier?: string;
-  /** Deferred to PR 2b (alerts BC). PR 2a ignores the flag. */
+  /**
+   * KL-13: when `true`, the list is narrowed to products that
+   * currently have at least one `ACTIVA` alert. `false` or `undefined`
+   * preserves the original (unfiltered) behaviour for backward compat.
+   */
   hasActiveAlert?: boolean;
   minStock?: number;
   maxStock?: number;
@@ -22,6 +26,14 @@ export interface ListOptions {
   filters?: ProductFilters | undefined;
   page: number;
   size: number;
+  /**
+   * Narrows the result to the supplied product ids. Set by the
+   * `hasActiveAlert=true` path of `ListProductsUseCase` via the
+   * `AlertReadModelPort` cross-BC seam (KL-13). Empty array is treated
+   * as no filter (matches Prisma `id: { in: [] }` which would normally
+   * empty the result, so the use case only forwards a non-empty set).
+   */
+  productIds?: readonly string[] | undefined;
 }
 
 export interface Page<T> {
