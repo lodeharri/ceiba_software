@@ -1,4 +1,4 @@
-// Prisma schema for the MercadoExpress MVP (PR 2a, design.md §4).
+// Prisma schema for the MercadoExpress MVP (PR 2a + PR 2b, design.md §4).
 //
 // Tables scoped to PR 2a:
 //   - users                  (auth BC)
@@ -7,7 +7,11 @@
 //   - login_attempts         (auth BC — RISK-003 Postgres rate limiter)
 //   - idempotency_keys       (shared — RISK-W05)
 //
-// Tables deferred to PR 2b/2c: stock_movements, alerts, purchase_orders.
+// Tables added in PR 2b:
+//   - stock_movements        (inventory BC — append-only per BR-6)
+//   - alerts                 (alerts BC — BR-4 partial unique index)
+//
+// Tables deferred to PR 2c: purchase_orders.
 // They will be appended via additive migrations (proposal §11.3 rollback contract).
 
 generator client {
@@ -106,4 +110,39 @@ model IdempotencyKey {
 
   @@index([userId, createdAt])
   @@map("idempotency_keys")
+}
+
+// ────────────────────────────────────────────────────────────────
+// PR 2b — Inventory BC + Alerts BC
+// ────────────────────────────────────────────────────────────────
+
+model StockMovement {
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productId String       @map("product_id") @db.Uuid
+  type      MovementType
+  quantity  Int
+  reason    String       @db.VarChar(280)
+  userId    String       @map("user_id") @db.Uuid
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // No Prisma relation to Product — the productId is a value reference (D1).
+  // Cross-BC FKs are forbidden per inventory/spec.md.
+
+  @@index([productId, createdAt(sort: Desc)])
+  @@map("stock_movements")
+}
+
+model Alert {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productId   String      @map("product_id") @db.Uuid
+  status      AlertStatus @default(ACTIVA)
+  resolvedAt  DateTime?   @map("resolved_at") @db.Timestamptz(6)
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // BR-4: at most one ACTIVA alert per productId. Partial unique index.
+  // NOTE: the partial unique index WHERE status = 'ACTIVA' is added via
+  // a raw migration (Prisma schema does not support WHERE on @@unique).
+  @@index([status, createdAt(sort: Desc)])
+  @@index([productId])
+  @@map("alerts")
 }

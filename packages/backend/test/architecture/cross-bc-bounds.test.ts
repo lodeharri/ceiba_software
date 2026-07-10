@@ -68,6 +68,10 @@ describe('cross-BC boundary (RISK-W06)', () => {
 
   it('no BC src file imports a Prisma client from a sibling BC', () => {
     // Stronger variant: forbid any path that resolves into another BC at all.
+    // EXCEPTION: cross-BC domain/ports/ imports are the documented seam for
+    // inter-BC communication (e.g. inventory imports alerts/domain/ports/ for
+    // AlertCloserPort). This pattern is hexagonal and safe — the port is a
+    // pure interface owned by the target BC's domain layer.
     const offenders: string[] = [];
     for (const sourceBc of BC_NAMES) {
       const bcDir = join(BACKEND_SRC, sourceBc);
@@ -93,6 +97,10 @@ describe('cross-BC boundary (RISK-W06)', () => {
               // two BCs at the interface edge, NEVER at the domain edge.
               const isDispatcher = file.endsWith('interface/dispatcher.ts');
               if (isDispatcher) continue;
+              // Cross-BC domain/ports/ imports are the hexagonal seam for
+              // inter-BC communication (e.g. AlertCloserPort). Allowed.
+              const isDomainPortsImport = path.includes(`${targetBc}/domain/ports/`);
+              if (isDomainPortsImport) continue;
               if (path.includes(otherBcSegment)) {
                 offenders.push(
                   `${relative(process.cwd(), file)}: cross-BC import into ${targetBc}/ (${path})`,
