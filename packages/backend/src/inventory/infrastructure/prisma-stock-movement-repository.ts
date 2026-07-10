@@ -50,11 +50,13 @@ export class PrismaStockMovementRepository implements StockMovementRepository {
     });
   }
 
-  async listByProduct(args: {
-    productId: string;
+  async listByProduct(args: { productId: string; page: number; size: number }): Promise<{
+    items: StockMovementProps[];
     page: number;
     size: number;
-  }): Promise<{ items: StockMovementProps[]; total: number; hasMore: boolean }> {
+    total: number;
+    hasMore: boolean;
+  }> {
     const page = Math.max(1, args.page);
     const size = Math.max(1, Math.min(200, args.size));
     const where = { productId: args.productId };

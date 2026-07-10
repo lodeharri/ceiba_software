@@ -32,7 +32,6 @@ function createPrismaStub() {
     stockMovement: {
       create: vi.fn(async (args: { data: Record<string, unknown> }) => {
         rows.push(args.data as (typeof rows)[0]);
-        totalCount++;
         return args.data;
       }),
       findMany: vi.fn(
