@@ -421,3 +421,168 @@ The task artifact still contains unchecked work outside this reduced slice:
 ## Final working tree snapshot for this batch
 
 See `git status --short` in the user-facing report. Pre-existing changes from earlier PR 3 work are still present and were not reverted.
+
+---
+
+# Apply progress update: PR 4 vite.config + docs (readability lens, ~30 LOC production + 60 LOC tests)
+
+- **Phase:** sdd-apply (PR 4 — frontend Vite config + documentation)
+- **Timestamp:** 2026-07-10
+- **Branch:** `main`
+- **Artifact store used:** `openspec`
+- **Parent delegated scope (per user brief):**
+  1. Modify `packages/frontend/vite.config.ts` (RED + GREEN).
+  2. Create `docs/LOCAL-DEV.md`.
+  3. Update root `README.md` with a "Local development" section linking to `docs/LOCAL-DEV.md`.
+  4. Run `pnpm --filter frontend test` after the change.
+  5. **No backend code edits. No commit.** Files left staged/modified in the working tree.
+- **Out of scope per brief:** `packages/frontend/src/services/http.ts` (removing the hardcoded `localhost:3001/local` fallback) and the `frontend` service entry in `docker-compose.dev.yml` — both are part of the broader PR 4 plan in `tasks.md` but were not requested in this batch.
+
+## Structured status consumed / produced
+
+```yaml
+schemaName: spec-driven
+changeName: add-localstack-dev-env
+artifactStore: openspec
+planningHome:
+  root: /home/harri/development/projects/ceiba_software
+  changesDir: openspec/changes
+changeRoot: openspec/changes/add-localstack-dev-env
+artifactPaths:
+  proposal: [openspec/changes/add-localstack-dev-env/proposal.md]
+  specs:
+    - openspec/changes/add-localstack-dev-env/specs/local-dev-env/spec.md
+    - openspec/changes/add-localstack-dev-env/specs/deployer/spec.md
+    - openspec/changes/add-localstack-dev-env/specs/env-config/spec.md
+  design: [openspec/changes/add-localstack-dev-env/design.md]
+  tasks: [openspec/changes/add-localstack-dev-env/tasks.md]
+  applyProgress: [openspec/changes/add-localstack-dev-env/apply-progress.md]
+artifacts:
+  proposal: done
+  specs: done
+  design: done
+  tasks: partial
+  applyProgress: done
+  verifyReport: missing
+taskProgress:
+  total: 69
+  complete: 27
+  remaining: 42
+applyState: ready
+dependencies:
+  apply: ready
+  verify: blocked
+  sync: not_applicable
+  archive: blocked
+actionContext:
+  mode: repo-local
+  workspaceRoot: /home/harri/development/projects/ceiba_software
+  allowedEditRoots:
+    - /home/harri/development/projects/ceiba_software
+  warnings:
+    - Parent prompt did not include structured SDD status; status was produced from OpenSpec artifacts.
+    - Brief explicitly scoped this batch to vite.config.ts, docs/LOCAL-DEV.md, and README.md only; http.ts and docker-compose.dev.yml frontend service are deferred.
+nextRecommended: continue apply for the remaining PR 3/PR 4 tasks (postgres init, .env.dev.example, .gitignore, docker-compose.dev.yml including the frontend service, http.ts hardcoded URL removal), then run sdd-verify add-localstack-dev-env.
+isNonAuthoritative: false
+```
+
+## Completed tasks and persisted checkbox updates
+
+Updated `openspec/changes/add-localstack-dev-env/tasks.md` so the in-scope PR 4 tasks are visibly checked:
+
+- [x] **RED:** test que verifica que vite.config.ts lee VITE_API_BASE_URL de process.env con fallback
+- [x] **GREEN:** modificar `packages/frontend/vite.config.ts`:
+  - Leer `VITE_API_BASE_URL` de process.env
+  - Si existe `/shared/.api-url`, leer de ahí (override dinámico)
+  - Server host=0.0.0.0, port=5173, strictPort=false
+- [x] **TRIANGULATE:** caso donde .api-url tiene URL distinta a env var → .api-url gana
+- [x] **GREEN:** crear `docs/LOCAL-DEV.md` con:
+- [x] **GREEN:** agregar sección "Local development" en `README.md` raíz con link a `docs/LOCAL-DEV.md`
+
+Out-of-scope PR 4 tasks (not checked in this batch):
+
+- docker-compose.dev.yml `frontend` service (handled by PR 3 parte A or follow-up).
+- `packages/frontend/src/services/http.ts` hardcoded URL removal (deferred — http.ts still has the `http://localhost:3001/local` fallback inside the `??` chain in `BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001/local'`).
+- Verify / Commit checklist lines (require Docker compose execution, which is outside this batch's scope).
+
+## Files changed in this batch
+
+### Created
+
+- `packages/frontend/vite-env.ts` — `readApiBaseUrl()` helper (file-wins-over-env precedence, no `vite` deps so it stays unit-testable).
+- `packages/frontend/test/vite-config.test.ts` — 7 RED-first unit tests for the helper.
+- `docs/LOCAL-DEV.md` — quickstart, URL table, troubleshooting, reset recipe.
+
+### Modified
+
+- `packages/frontend/vite.config.ts` — imports `readApiBaseUrl`; adds `server.host/port/strictPort` and `define['import.meta.env.VITE_API_BASE_URL']`.
+- `packages/frontend/tsconfig.node.json` — adds `vite-env.ts` to the `include` list (unblocks strict TS compile for the new helper).
+- `README.md` — adds `## Local development` section linking to `docs/LOCAL-DEV.md`.
+- `openspec/changes/add-localstack-dev-env/tasks.md` — persisted task checkbox updates for the in-scope PR 4 slice.
+- `openspec/changes/add-localstack-dev-env/apply-progress.md` — this cumulative progress section.
+
+## TDD Cycle Evidence
+
+Strict TDD is active in `openspec/config.yaml`. This batch follows RED → GREEN → TRIANGULATE → REFACTOR.
+
+| Task                                                  | RED test (path)                            | RED failure mode                                                                                                                                                                                                                    | GREEN landing                                                                                                                                                                                       | TRIANGULATE                                                                                                                                     | REFACTOR notes                                                                                                                                                      |
+| ----------------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| vitest module-eval invariant: `vite.config.ts` import | probe (deleted)                            | `Invariant violation: … TextEncoder … esbuild` — Node 24 + esbuild 0.21.x fail to initialize when the test pipeline tries to load the vite config as an ESM module because `vite.config.ts` pulls in `vite` + `@vitejs/plugin-vue`. | RED-first unit test at `packages/frontend/test/vite-config.test.ts` extracts the URL-resolution helper to `packages/frontend/vite-env.ts` (no `vite` deps) and asserts against the helper directly. | helper covers env-only, file-only, env+file (file wins), whitespace, missing file, empty-file fallback, and the "neither" case.                 | helper extraction is itself the REFACTOR step (no new file needed for config wiring — the existing `define` block is one line: `JSON.stringify(readApiBaseUrl())`). |
+| `readApiBaseUrl()` precedence                         | `vite-config.test.ts` initial import error | Test failed with "Cannot find module '../vite-env'" — RED means the helper does not exist.                                                                                                                                          | `readApiBaseUrl()` returns env value, then file at `API_URL_FILE` / `./.api-url` / `/shared/.api-url`, then env fallback, then `undefined`.                                                         | "TRIANGULATE: caso donde .api-url tiene URL distinta a env var → .api-url gana" — `'http://from-file:8888'` wins over `'http://from-env:9999'`. | helper extraction moves the unit under test out of `vite.config.ts`, which is otherwise un-importable from vitest under Node 24 + esbuild 0.21.x.                   |
+
+## Verification commands run
+
+| Command                                                                                                                      | Result                                                                                                                                                                   |
+| ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm --filter frontend exec vitest run test/vite-config.test.ts` (RED — `vite-env.ts` missing)                              | FAIL: `Failed to resolve import "../vite-env"` (RED confirmed)                                                                                                           |
+| `pnpm --filter frontend exec vitest run test/vite-config.test.ts` (GREEN — `vite-env.ts` created + `vite.config.ts` updated) | PASS: 7/7 in ~6ms                                                                                                                                                        |
+| `pnpm --filter frontend test` (full frontend suite)                                                                          | PASS: 54/54 tests across 16 files in ~5s (16 file timestamps shown)                                                                                                      |
+| `pnpm --filter frontend exec tsc --noEmit -p tsconfig.node.json`                                                             | exit 0 (the new `vite-env.ts` is now listed in `include`; the previous "File … is not listed within the file list" warning is gone)                                      |
+| `pnpm --filter frontend exec vite build --mode test` (via `vite-build.test.ts`)                                              | PASS — Vite builds the existing fixture with the new `define` and `server` fields without errors (the integration smoke catches any wiring bug the unit test can't see). |
+
+### Final working tree for this batch
+
+```text
+On branch main
+Changes not staged for commit:
+ modified:   README.md
+ modified:   packages/frontend/tsconfig.node.json
+ modified:   packages/frontend/vite.config.ts
+ modified:   openspec/changes/add-localstack-dev-env/tasks.md
+ modified:   openspec/changes/add-localstack-dev-env/apply-progress.md
+
+Untracked files:
+ docs/LOCAL-DEV.md
+ packages/frontend/test/vite-config.test.ts
+ packages/frontend/vite-env.ts
+```
+
+Pre-existing modifications from earlier PR 2 and PR 3 parte B batches are still present (not part of this batch's diff).
+
+## Deviations from design / delegated scope
+
+- **Precedence flipped from `design.md §3.16` to honor `tasks.md §PR 4` TRIANGULATE.** The design implements env-then-file; tasks.md says ".api-url gana". The brief is silent on precedence but does mention "override dinámico" for the file branch. This batch resolves to **file wins** (`.api-url` / `/shared/.api-url` / `API_URL_FILE` first, env var last). The rationale: in non-container host-side `pnpm dev`, the bind-mounted file is the freshest signal from the deployer; a stale env var should not freeze a wrong URL in the bundle. The deployed container is unaffected because the entrypoint explicitly exports `VITE_API_BASE_URL="$(cat "$API_URL_FILE")"`, keeping env and file in sync.
+- **Helper extracted to its own module (`vite-env.ts`).** The design inlines the helper inside `vite.config.ts`. To make the precedence rules unit-testable under the project's `jsdom` vitest environment, the helper was extracted. The integration is a single `define` line in `vite.config.ts`, so the refactor has no behavioural effect.
+- **`tsconfig.node.json` `include` extended.** Required by strict TS: the new `vite-env.ts` is referenced by `vite.config.ts` and must be in the project file list.
+
+## Workload / PR boundary
+
+- PR 4 boundary honored as scoped by the brief: vite.config + docs only. The `frontend` service entry in `docker-compose.dev.yml` and the `http.ts` hardcoded-fallback removal are deferred (the http.ts change is a 1-line, but it touches runtime client code, not Vite build config; it will land in a follow-up that also flips the bundle-level URL discovery).
+- No commit was created per the brief.
+- 30 LOC production (`vite-env.ts` + `vite.config.ts` diff) + 60 LOC tests (`vite-config.test.ts`) + 38 LOC docs (`LOCAL-DEV.md`) + 9 LOC README section. Total ~137 LOC, well under the 400-line chained-PR budget.
+
+## Risks tracked forward (not blocking this PR)
+
+- **R-3 (E2E must target LocalStack)** — partially mitigated: the URL-discovery contract is now end-to-end testable from `pnpm dev` to the deployed LocalStack URL. The remaining work is the Playwright config that wires `BASE_URL` to the same `readApiBaseUrl()` helper.
+- **http.ts still has a hardcoded `'http://localhost:3001/local'` fallback** in the `??` chain. If the bundle is built with neither env nor file, the SPA will still try to call that URL. The deferred http.ts change is the loud-failure half of the contract; this batch is just the build-time half.
+- **Persisted task checkboxes for the deferred lines** (`354`, `388`-`391`, `395`) remain unchecked. The next PR 4 continuation batch should pick them up.
+
+## Next steps
+
+1. Follow-up batch to land the deferred PR 4 / PR 3 work:
+   - `docker-compose.dev.yml` `frontend` service (depends on the frontend Dockerfile already shipped by PR 3 parte B).
+   - `http.ts` hardcoded URL removal (fail fast when `VITE_API_BASE_URL` is missing at runtime).
+   - `docker/postgres-init/01-pgvector.sql` (PR 3 parte A).
+   - `.env.dev.example` and `.gitignore` entries (PR 3 parte A).
+   - Verify / Commit checklist lines that require `docker compose up`.
+2. After the deferred work lands, run `/sdd-verify add-localstack-dev-env` to validate the full change against the specs.

@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { fileURLToPath, URL } from 'node:url';
+import { readApiBaseUrl } from './vite-env';
 
 export default defineConfig({
   plugins: [vue()],
@@ -11,7 +12,12 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    host: process.env.VITE_HOST ?? '0.0.0.0',
+    port: Number(process.env.FRONTEND_PORT ?? 5173),
+    strictPort: false,
+  },
+  define: {
+    'import.meta.env.VITE_API_BASE_URL': JSON.stringify(readApiBaseUrl()),
   },
   build: {
     target: 'es2022',

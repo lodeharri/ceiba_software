@@ -49,6 +49,19 @@ Don't duplicate it here — this README links, not redefines.
 └── vitest.workspace.ts         # workspace test runner
 ```
 
+## Local development
+
+For a full local stack (PostgreSQL + LocalStack + CDK deployer + Vite frontend) see
+[`docs/LOCAL-DEV.md`](docs/LOCAL-DEV.md). Quick path:
+
+```bash
+cp .env.dev.example .env.dev
+scripts/dev-up.sh
+```
+
+Then open <http://localhost:5173> (frontend) and the LocalStack health endpoint at
+<http://localhost:4566/_localstack/health>.
+
 ## Scripts
 
 | Script                 | What it does                                                  |

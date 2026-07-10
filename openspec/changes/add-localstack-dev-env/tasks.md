@@ -342,12 +342,12 @@ PR 3 + PR 4 combined exceed 400 LOC, so they will be delivered as chained PRs wi
 
 ### packages/frontend/vite.config.ts
 
-- [ ] **RED:** test que verifica que vite.config.ts lee VITE_API_BASE_URL de process.env con fallback
-- [ ] **GREEN:** modificar `packages/frontend/vite.config.ts`:
+- [x] **RED:** test que verifica que vite.config.ts lee VITE_API_BASE_URL de process.env con fallback
+- [x] **GREEN:** modificar `packages/frontend/vite.config.ts`:
   - Leer `VITE_API_BASE_URL` de process.env
   - Si existe `/shared/.api-url`, leer de ahí (override dinámico)
   - Server host=0.0.0.0, port=5173, strictPort=false
-- [ ] **TRIANGULATE:** caso donde .api-url tiene URL distinta a env var → .api-url gana
+- [x] **TRIANGULATE:** caso donde .api-url tiene URL distinta a env var → .api-url gana
 
 ### docker-compose.dev.yml update (frontend service)
 
@@ -361,7 +361,7 @@ PR 3 + PR 4 combined exceed 400 LOC, so they will be delivered as chained PRs wi
 
 ### docs/LOCAL-DEV.md
 
-- [ ] **GREEN:** crear `docs/LOCAL-DEV.md` con:
+- [x] **GREEN:** crear `docs/LOCAL-DEV.md` con:
   - **Prerequisites**: Docker 24+, Docker Compose v2.24+, 8GB RAM mínimo
   - **Quickstart** (3 pasos):
     1. `cp .env.dev.example .env.dev`
@@ -381,7 +381,7 @@ PR 3 + PR 4 combined exceed 400 LOC, so they will be delivered as chained PRs wi
 
 ### README.md update
 
-- [ ] **GREEN:** agregar sección "Local development" en `README.md` raíz con link a `docs/LOCAL-DEV.md`
+- [x] **GREEN:** agregar sección "Local development" en `README.md` raíz con link a `docs/LOCAL-DEV.md`
 
 ### Verify
 
