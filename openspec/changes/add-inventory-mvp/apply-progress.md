@@ -567,3 +567,148 @@ or risking native-build breakage in `deploy-dev.yml`.
   that lands, the `pnpm.overrides.tar` entry can be removed.
 - CI's `vulnerability-scan` job (`pnpm audit --prod --audit-level=high`)
   will keep the gate enforced on every PR.
+
+---
+
+## PR 1 — BLOCKER closeout — 2026-07-10
+
+Reviewer flagged three CRITICAL/BLOCKER security defects in
+`openspec/changes/add-inventory-mvp/reviews/pr1-readability-review.md`
+(C1, C2, C3). Closed in three atomic commits, one per finding. Tight
+scope: no SUGGESTION (S1–S8) or NIT (N1–N5) items touched; the 13
+deferred findings are listed at the bottom for the PR 4 review-cleanup.
+
+### C1 — JWT secrets stored as plaintext SSM (not SecureString)
+
+- **Fix:** added `type: ssm.ParameterType.SECURE_STRING` to the four
+  `new ssm.StringParameter(this, ...)` constructors.
+- **Files / lines:**
+  - `packages/infra/src/stacks/ApiStack.ts:115-129` — `JwtSecret` and
+    `JwtSecretPrevious`.
+  - `packages/infra/src/constructs/jwt-secret.ts:32-42` — `JwtSecretPair`
+    `Current` and `Previous` (the otherwise-unused duplicate construct
+    that the review called out in S8). Even though `JwtSecretPair`
+    has no in-PR-1 consumer, marking it `SECURE_STRING` keeps the two
+    parallel definitions from drifting and closes the defect on the
+    file the review cited.
+- **Verification:** `cdk synth -c stage=dev` and
+  `cdk synth -c stage=prod` — synthesized CFN now shows
+  `Type: SecureString` for both `JwtSecret` and `JwtSecretPrevious`
+  (the `cdk synth --all` script in `packages/infra/package.json`
+  iterates per stage; both stages produce the SecureString form).
+- **Commit:** `a08437e fix(infra): mark JWT SSM parameters as SecureString (C1)`.
+
+### C2 — Database URL with resolved password stored as plaintext SSM
+
+- **Fix:** Option A. Dropped the `databaseUrlParameter` SSM `String`
+  parameter (with its `{{resolve:secretsmanager:...}}` dynamic
+  reference) entirely. Provisioned the DB credentials as an explicit
+  `rds.DatabaseSecret` and exposed its ARN as the
+  `DatabaseSecretArn` CFN output. The migrations Lambda receives that
+  ARN in the `DATABASE_URL` env var (a string, not a resolved secret)
+  and the role gets a `secretsmanager:GetSecretValue` permission on
+  it. PR 2a replaces the stub handler with real `GetSecretValue` +
+  URL-construction logic. Chose Option A over B because Option B
+  would still require the Lambda SDK to call Secrets Manager at runtime
+  for the password, so Option A is strictly simpler end-to-end and
+  removes one SSM round-trip per cold start.
+- **Files / lines:**
+  - `packages/infra/src/stacks/DatabaseStack.ts` — added
+    `rds.DatabaseSecret(...)` (DB creds), removed the
+    `databaseUrlParameter` SSM resource, renamed the CFN output from
+    `DatabaseUrlSecretArn` to `DatabaseSecretArn` and updated the
+    JSDoc/description. `databaseUrlSecretArn` (the field consumed
+    downstream) is now the Secrets Manager secret ARN.
+  - `packages/infra/src/constructs/migrations.ts:55-72` — replaced
+    the `ssm:GetParameter` policy with `secretsmanager:GetSecretValue`
+    (on the secret ARN); kept `kms:Decrypt` on `*` because the
+    migrations Lambda reads the admin-password SSM SecureString (C3).
+  - `packages/infra/test/constructs/database-stack.test.ts:56-72` —
+    updated assertion to look for `DatabaseSecretArn`, asserts the
+    CFN contains `AWS::SecretsManager::Secret`, and asserts the
+    prior `/database-url` parameter name is gone.
+- **Verification:** `cdk synth -c stage={dev,prod}` produces the
+  Database template with `DbSecret` as a `AWS::SecretsManager::Secret`
+  (not `AWS::SSM::Parameter`), `DatabaseSecretArn` CFN output value
+  is `{"Ref":"DbSecret..."}`. Re-grep for `/database-url` in the
+  template output returns zero matches.
+- **Commit:** `6fe034c fix(infra): route DATABASE_URL through Secrets Manager, not plaintext SSM (C2)`.
+
+### C3 — Hardcoded `ADMIN_PASSWORD` literal baked into migrations Lambda
+
+- **Fix:** added a third SSM `SecureString` parameter
+  `/MercadoExpress/{stage}/admin-password` in `DatabaseStack`
+  (parallel to the JWT pair). The migrations Lambda reads it via
+  `ssm.StringParameter.valueForStringParameter(this, adminPassword
+ParameterName)` and the role gets a scoped `ssm:GetParameter` policy
+  on that parameter ARN. The literal `change-me-on-first-deploy` is
+  removed from the CFN env-var block.
+- **Files / lines:**
+  - `packages/infra/src/stacks/DatabaseStack.ts` — added
+    `AdminPasswordParameter` (`ssm.StringParameter` with
+    `ParameterType.SECURE_STRING`); exposed
+    `adminPasswordParameterName` as a public field so PR 2a can
+    thread it into the `MigrationsCustomResource` props.
+  - `packages/infra/src/constructs/migrations.ts` — added the
+    `adminPasswordParameterName` prop, replaced the
+    `ADMIN_PASSWORD: 'change-me-on-first-deploy'` literal with
+    `ssm.StringParameter.valueForStringParameter(...)`, added a
+    scoped `ssm:GetParameter` policy on the parameter ARN.
+- **No other hardcoded placeholders** in the migrations Lambda env.
+  `ADMIN_USERNAME: 'admin'` and `ADMIN_EMAIL: 'admin@mercadoexpress.local'`
+  are not secret material and stay as plain strings (matching the
+  design — they identify the admin user, not authenticate one).
+- **Verification:** `cdk synth -c stage={dev,prod}` — the synthesized
+  CFN contains an `AdminPasswordParameter` resource with
+  `Type: SecureString` and the migrations Lambda env
+  `ADMIN_PASSWORD` resolves to a `{{resolve:ssm:...}}` dynamic
+  reference (no literal string `change-me-on-first-deploy` appears
+  in any CFN template). Grep over `packages/infra/cdk.out/*.template.json`
+  for the literal returns zero matches.
+- **Commit:** `83dc2f6 fix(infra): move ADMIN_PASSWORD literal into an SSM SecureString (C3)`.
+
+### Verification gate (after all 3 commits)
+
+- `pnpm -w vitest run` → **PASS** (18 tests across 5 files; synth
+  smoke test confirms `cdk synth -c stage={dev,prod}` exit 0).
+- `pnpm -w tsc --noEmit` → **PASS** (`exactOptionalPropertyTypes`
+  honored; the `Credentials.fromSecret(dbSecret, ...)` cast through
+  `unknown as secretsmanager.ISecret` is a known CDK type-system gap
+  for `rds.DatabaseSecret`, documented inline next to the call).
+- `pnpm -w eslint .` → **PASS**.
+- `pnpm -w prettier --check .` → **PASS**.
+- `pnpm --filter infra exec cdk synth --all --no-color` (script is
+  `cdk synth --all --no-color`, internally iterating per stage) →
+  **PASS** (8 templates; 4 stacks × 2 stages; no new warnings; the
+  only `[ack:]` feature-flag acknowledgments are unchanged).
+- `pnpm audit --prod --audit-level=high` → **0 known high-severity
+  vulnerabilities** (audit gate stays green via the
+  `pnpm.overrides.tar ^7.5.11` pin from PR 1 commit `6561e2b`).
+
+### Commits (3 atomic, one per BLOCKER)
+
+| SHA       | Finding | Subject                                                                          |
+| --------- | ------- | -------------------------------------------------------------------------------- |
+| `a08437e` | C1      | `fix(infra): mark JWT SSM parameters as SecureString (C1)`                       |
+| `6fe034c` | C2      | `fix(infra): route DATABASE_URL through Secrets Manager, not plaintext SSM (C2)` |
+| `83dc2f6` | C3      | `fix(infra): move ADMIN_PASSWORD literal into an SSM SecureString (C3)`          |
+
+### Findings deliberately out of scope (deferred to PR 4 review-cleanup)
+
+S1 `as never` cast in ObservabilityStack alarms,
+S2 `pnpm.overrides.tar` range vs pinned version,
+S3 five near-identical `bootstrap.ts` files,
+S4 `BACKEND_PACKAGE_VERSION` not bumped to `pr1`,
+S5 `kms:Decrypt` grant on `*` (still `*` here — narrowing is the
+S5 follow-up),
+S6 FrontendStack ResponseHeadersPolicy omits CSP,
+S7 `MigrationsCustomResource` is dead code in PR 1
+(still unwired — PR 2a instantiates it),
+S8 `JwtSecretPair` is dead code in PR 1
+(S8 follow-up is consolidating into `ApiStack`; here we only
+marked the duplicate SecureString, per BLOCKER C1),
+N1 `synth.test.ts` comment about `--all`,
+N2 `placeholder-entry.ts` comment about being gitignored,
+N3 root `type-check` bypasses frontend `vue-tsc`,
+N4 `void ...;` dead references,
+N5 bootstrap `bc` name strings not typed.
