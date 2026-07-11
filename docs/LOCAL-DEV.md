@@ -1,65 +1,154 @@
 # Local Development
 
-## Quickstart (3 pasos)
+One command brings up the entire dev stack: `pnpm dev`. PostgreSQL + LocalStack
+start in Docker; the wrapper-native dev server (`scripts/dev-server.ts`) and
+Vite run on the host with hot reload. This doc covers the happy path, what
+runs where, troubleshooting, and how to reset.
+
+## Prerequisites
+
+- **Node.js ≥ 20** and **pnpm 9** (`corepack enable pnpm` once).
+- **Docker 24+** with Compose v2 (`docker compose version` should print v2.x).
+- About **2 GB of free RAM** for postgres + LocalStack + Vite + dev server.
+- Ports free on the host: **3001** (dev server), **4566** (LocalStack),
+  **5173** (Vite), **5432** (postgres). Override in `.env.dev` if any collide
+  (see [Troubleshooting](#troubleshooting)).
+
+## First run
 
 ```bash
-# 1. Copiar env defaults
-cp .env.dev.example .env.dev
-
-# 2. Levantar todo (postgres + localstack + cdk-deployer + frontend)
-scripts/dev-up.sh
-# o equivalentemente:
-docker compose --env-file .env.dev -f docker-compose.dev.yml up -d
-
-# 3. Esperar ~3 minutos (primera vez tarda más por build) y abrir
-open http://localhost:5173
+cp .env.dev.example .env.dev   # one-time copy; defaults are functional
+pnpm install                   # workspace deps
+pnpm dev                       # everything
 ```
 
-## URLs
+`pnpm dev` runs three jobs concurrently (with labels `db`, `api`, `web`):
 
-| Servicio          | URL                                        | Notas                                         |
-| ----------------- | ------------------------------------------ | --------------------------------------------- |
-| Frontend (Vite)   | <http://localhost:5173>                    | Login screen                                  |
-| LocalStack API    | <http://localhost:4566>                    | Lambda + API Gateway                          |
-| LocalStack health | <http://localhost:4566/_localstack/health> | Status check                                  |
-| PostgreSQL        | localhost:5432                             | user=ceiba, pass=ceiba_dev, db=mercadoexpress |
+1. `pnpm dev:up` — `docker compose up -d` for postgres + LocalStack. Waits for
+   both to report healthy before continuing.
+2. `pnpm dev:api` — the wrapper-native dev server on `:3001`. Watches the
+   `packages/infra/src/handlers/**` tree and restarts on save.
+3. `pnpm dev:web` — Vite on `:5173`. Watches the frontend tree with HMR.
+
+Open <http://localhost:5173> for the SPA. The login screen talks to
+<http://localhost:3001/api/v1> (the dev server), which talks to
+<http://localhost:4566> (LocalStack) and `localhost:5432` (postgres).
+
+## What runs where
+
+| Command          | Runs on              | Port  | Purpose                                                        |
+| ---------------- | -------------------- | ----- | -------------------------------------------------------------- |
+| `pnpm dev`       | host + docker        | mixed | Orchestrates the three sub-commands below with `concurrently`. |
+| `pnpm dev:up`    | docker               | —     | Starts postgres + LocalStack containers (waits for health).    |
+| `pnpm dev:api`   | host (`tsx --watch`) | 3001  | The HTTP wrapper that invokes the real Lambda handlers.        |
+| `pnpm dev:web`   | host (`vite`)        | 5173  | The Vue 3 SPA with HMR.                                        |
+| `pnpm dev:down`  | docker               | —     | Stops the two containers (keeps volumes).                      |
+| `pnpm dev:reset` | host + docker        | —     | `dev:down -v` plus clears the Vite cache.                      |
+
+URLs once everything is up:
+
+| Service           | URL                                                  |
+| ----------------- | ---------------------------------------------------- |
+| SPA (Vite)        | <http://localhost:5173>                              |
+| Dev server API    | <http://localhost:3001/api/v1>                       |
+| Dev server health | <http://localhost:3001/api/v1/health>                |
+| LocalStack health | <http://localhost:4566/_localstack/health>           |
+| PostgreSQL        | `localhost:5432` (user `ceiba`, db `mercadoexpress`) |
 
 ## Troubleshooting
 
-### Puerto ocupado
+### LocalStack container keeps old state
 
-Cambiar `POSTGRES_PORT` o `LOCALSTACK_PORT` en `.env.dev` (ej. `POSTGRES_PORT=5433`).
+Symptoms: requests return stale data, or LocalStack health says
+`s3: error`. LocalStack stores state in the `localstack-data` named volume.
 
-### DB se ensució
-
-```bash
-scripts/dev-down.sh  # incluye -v (borra volúmenes)
-scripts/dev-up.sh
-```
-
-### API URL cambió
+Fix:
 
 ```bash
-rm .docker-shared/.api-url
-docker compose --env-file .env.dev -f docker-compose.dev.yml restart deployer
+pnpm dev:down -v   # the -v flag drops the named volumes
+pnpm dev:up
 ```
 
-### Cold start muy lento
+### Vite serves a stale module after a config change
 
-- Primera vez: ~5min (build de imágenes Docker)
-- Siguientes: < 30s
+Symptoms: edits to `vite.config.ts`, `vite-env.ts`, or anything in
+`vite-plugins/` don't take effect; the dev server keeps the old behaviour.
 
-### Ver logs
+Fix:
 
 ```bash
-docker compose -f docker-compose.dev.yml logs -f deployer
-docker compose -f docker-compose.dev.yml logs -f frontend
+rm -rf packages/frontend/node_modules/.vite
+pnpm dev:web
 ```
 
-## Reset completo
+`pnpm dev:reset` does this for you.
+
+### Build fails with `VITE_API_BASE_URL is required. See docs/LOCAL-DEV.md`
+
+The `envValidation()` Vite plugin (in `packages/frontend/vite-plugins/`)
+fires whenever `VITE_API_BASE_URL` is unset or empty. The fix is to set it
+explicitly:
 
 ```bash
-scripts/dev-down.sh
-docker system prune -f
-scripts/dev-up.sh
+# Either edit packages/frontend/.env.development:
+VITE_API_BASE_URL=http://localhost:3001/api/v1
+
+# Or pass it inline:
+VITE_API_BASE_URL=http://localhost:3001/api/v1 pnpm -C packages/frontend build
 ```
+
+### Port already in use (3001, 4566, 5173, 5432)
+
+Identify the holder and stop it:
+
+```bash
+ss -ltnp 'sport = :3001 or sport = :4566 or sport = :5173 or sport = :5432'
+```
+
+If you cannot free the port, override it in `.env.dev` (`POSTGRES_PORT`,
+`LOCALSTACK_PORT`, `FRONTEND_PORT`, `DEV_SERVER_PORT`) — every port is
+configurable.
+
+### DB not ready when `dev:api` starts
+
+`pnpm dev:up` waits on the postgres healthcheck before exiting, so by the
+time the runner reaches `dev:api` the DB should already be accepting
+connections. If you see connection-refused errors during the first ~10
+seconds, give it a moment — the AWS SDK retry policy in the wrapper-native
+dev server will retry automatically.
+
+If it persists:
+
+```bash
+docker compose -f docker-compose.dev.yml ps            # confirm 'healthy'
+docker compose -f docker-compose.dev.yml logs postgres # check for init errors
+```
+
+## Reset
+
+Full reset (containers + named volumes + Vite cache):
+
+```bash
+pnpm dev:reset
+```
+
+What that clears:
+
+- `postgres` + `localstack` containers (stopped and removed).
+- `pgdata` + `localstack-data` named volumes (database + LocalStack state).
+- `packages/frontend/node_modules/.vite` (Vite module cache).
+
+Power users can run the steps individually:
+
+```bash
+pnpm dev:down                        # stop only
+docker compose -f docker-compose.dev.yml down -v   # stop + drop volumes
+rm -rf packages/frontend/node_modules/.vite        # clear Vite cache
+```
+
+## Next step
+
+Run `pnpm dev`, open <http://localhost:5173>, and the login screen will
+guide you from there. If anything in this doc is wrong or missing, the
+reset recipe is `pnpm dev:reset` — that always gets you back to a clean
+state.

@@ -15,7 +15,7 @@
  *     DATABASE_URL and ADMIN_PASSWORD directly from process.env. This is
  *     the only way LocalStack deployments work because the DynamoDB-backed
  *     Secrets Manager / SSM services are local-only and do not survive
- *     across deployer restarts in a predictable way.
+ *     across stack updates in a predictable way.
  *   - STAGE=dev|prod keep the existing AWS SDK resolution path.
  */
 
@@ -86,8 +86,8 @@ function resolveLocalEnvValue(name: string): string {
 }
 
 async function resolveDatabaseUrl(): Promise<string> {
-  // PR 2: localstack stage bypasses Secrets Manager. The deployer (or
-  // docker compose) populates DATABASE_URL directly in the Lambda env.
+  // PR 2: localstack stage bypasses Secrets Manager. The Lambda runtime
+  // (or docker compose env_file) populates DATABASE_URL directly.
   if (process.env['STAGE'] === 'localstack') {
     return resolveLocalEnvValue('DATABASE_URL');
   }
@@ -127,8 +127,8 @@ async function resolveDatabaseUrl(): Promise<string> {
 }
 
 async function resolveAdminPassword(): Promise<string> {
-  // PR 2: localstack stage bypasses SSM. The deployer populates
-  // ADMIN_PASSWORD directly in the Lambda env.
+  // PR 2: localstack stage bypasses SSM. ADMIN_PASSWORD is supplied
+  // directly via the Lambda runtime / docker compose env_file.
   if (process.env['STAGE'] === 'localstack') {
     return resolveLocalEnvValue('ADMIN_PASSWORD');
   }

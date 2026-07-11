@@ -1,0 +1,31 @@
+{
+  "event": {
+    "version": "2.0",
+    "routeKey": "POST /auth/login",
+    "rawPath": "/auth/login",
+    "rawQueryString": "",
+    "headers": {
+      "content-type": "application/json",
+      "user-agent": "vitest/dev-server",
+      "x-forwarded-for": "203.0.113.7",
+      "accept": "application/json"
+    },
+    "requestContext": {
+      "http": {
+        "method": "POST",
+        "path": "/auth/login",
+        "protocol": "HTTP/1.1",
+        "sourceIp": "203.0.113.7",
+        "userAgent": "vitest/dev-server"
+      },
+      "requestId": "00000000-0000-4000-8000-000000000000",
+      "routeKey": "POST /auth/login",
+      "stage": "$default",
+      "time": "2026-07-10T00:00:00.000Z",
+      "timeEpoch": 1788249600000
+    },
+    "body": "{\"username\":\"a\",\"password\":\"b\"}",
+    "isBase64Encoded": false,
+    "cookies": []
+  }
+}

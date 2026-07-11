@@ -1,5 +1,7 @@
 # Proposal: add-localstack-dev-env
 
+## Status: superseded by replace-localstack-dev-server on 2026-07-10
+
 ## Problem
 
 El backend de MercadoExpress es 100% AWS-native (Lambda + API Gateway v2 + RDS Postgres + CloudFront + Secrets Manager + SSM Parameter Store). Los desarrolladores no pueden correr ni probar nada localmente sin una cuenta AWS real, lo que:

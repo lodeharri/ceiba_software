@@ -12,6 +12,7 @@
     "vite-env.ts",
     "vitest.config.ts",
     "tailwind.config.ts",
-    "postcss.config.cjs"
+    "postcss.config.cjs",
+    "vite-plugins/*.ts"
   ]
 }

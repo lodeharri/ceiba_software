@@ -2,12 +2,12 @@
 #
 # One-command bootstrap (after `cp .env.dev.example .env.dev`):
 #
-#   docker compose -f docker-compose.dev.yml up -d
+#   pnpm dev:up
 #
 # All hosts, ports, secrets, container names, network names, and volume names
 # are interpolated from .env.dev / .env.dev.local. NEVER hardcode a port or
-# URL here — see openspec/changes/add-localstack-dev-env/design.md §3.1
-# and spec REQ-CFG-1 ("zero hardcoded configuration values").
+# URL here — see openspec/changes/replace-localstack-dev-server/design.md §3.1
+# and spec REQ-DEM-* (docker-env-minimal) + REQ-EVC-* (env-vars-cleanup).
 #
 name: ${COMPOSE_PROJECT_NAME}
 
@@ -36,8 +36,12 @@ services:
       - local-dev
     healthcheck:
       test:
-        - 'CMD-SHELL'
-        - 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" -p "$${POSTGRES_PORT}"'
+        - CMD-SHELL
+        - >-
+          pg_isready
+          -U "$${POSTGRES_USER}"
+          -d "$${POSTGRES_DB}"
+          -p "$${POSTGRES_PORT}"
       interval: ${HEALTHCHECK_INTERVAL}
       timeout: ${HEALTHCHECK_TIMEOUT}
       retries: ${POSTGRES_HEALTHCHECK_RETRIES}
@@ -49,116 +53,27 @@ services:
       - .env.dev
       - .env.dev.local
     environment:
-      SERVICES: ${LOCALSTACK_SERVICES}
-      DEFAULT_REGION: ${AWS_DEFAULT_REGION}
-      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+      SERVICES: serverless,s3,sqs,sns,secretsmanager,iam,sts,cloudformation
+      DEFAULT_REGION: ${AWS_REGION}
+      AWS_DEFAULT_REGION: ${AWS_REGION}
       DEBUG: ${LOCALSTACK_DEBUG}
       PERSISTENCE: ${LOCALSTACK_PERSISTENCE}
-      GATEWAY_LISTEN: ${LOCALSTACK_BIND_HOST}:${LOCALSTACK_PORT}
-      # Lets spawned Lambda runtime containers resolve `postgres` by name
-      # through the compose network bridge.
-      LAMBDA_DOCKER_NETWORK: ${LOCAL_DEV_NETWORK_NAME}
-      LAMBDA_REMOVE_CONTAINERS: ${LOCALSTACK_LAMBDA_REMOVE_CONTAINERS}
     ports:
       - '${LOCALSTACK_PORT}:${LOCALSTACK_PORT}'
     volumes:
       - localstack-data:/var/lib/localstack
-      # Docker-in-Docker: LocalStack spawns Lambda runtime containers, so
-      # it needs to talk to the host Docker daemon.
-      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - local-dev
     healthcheck:
       test:
-        - 'CMD-SHELL'
-        - 'curl -sf "http://$${LOCALSTACK_HOST}:$${LOCALSTACK_PORT}/_localstack/health" >/dev/null'
+        - CMD-SHELL
+        - >-
+          curl -sf
+          "http://$${LOCALSTACK_HOST}:$${LOCALSTACK_PORT}/_localstack/health"
+          >/dev/null
       interval: ${LOCALSTACK_HEALTHCHECK_INTERVAL}
       timeout: ${HEALTHCHECK_TIMEOUT}
       retries: ${LOCALSTACK_HEALTHCHECK_RETRIES}
-
-  deployer:
-    # The deployer image is built by parte B (PR 3 part B). The reference
-    # here is the contract: when parte B lands, the compose file becomes
-    # runnable as-is.
-    build:
-      context: .
-      dockerfile: docker/deployer/Dockerfile
-    container_name: ${DEPLOYER_CONTAINER_NAME}
-    env_file:
-      - .env.dev
-      - .env.dev.local
-    environment:
-      STAGE: ${STAGE}
-      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
-      DATABASE_URL: ${DATABASE_URL}
-      JWT_SECRET: ${JWT_SECRET}
-      ADMIN_USERNAME: ${ADMIN_USERNAME}
-      ADMIN_EMAIL: ${ADMIN_EMAIL}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
-      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
-      API_URL_FILE: ${API_URL_FILE}
-      CDK_OUTPUTS_FILE: ${CDK_OUTPUTS_FILE}
-      API_GATEWAY_HOST_EXTERNAL: ${API_GATEWAY_HOST_EXTERNAL}
-      API_GATEWAY_PORT: ${API_GATEWAY_PORT}
-      LOCALSTACK_HOST: ${LOCALSTACK_HOST}
-      LOCALSTACK_PORT: ${LOCALSTACK_PORT}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      localstack:
-        condition: service_healthy
-    volumes:
-      # shared-data carries cdk-outputs.json + .api-url from the deployer
-      # to the frontend. The deployer writes it; the frontend reads it.
-      - shared-data:${SHARED_DATA_DIR}
-    networks:
-      - local-dev
-    restart: on-failure
-    healthcheck:
-      test: ['CMD-SHELL', 'test -s "$${API_URL_FILE}"']
-      interval: ${HEALTHCHECK_INTERVAL}
-      timeout: ${HEALTHCHECK_TIMEOUT}
-      retries: ${DEPLOYER_HEALTHCHECK_RETRIES}
-
-  frontend:
-    # Same contract as deployer: image lands in PR 3 part B.
-    build:
-      context: .
-      dockerfile: docker/frontend/Dockerfile
-    container_name: ${FRONTEND_CONTAINER_NAME}
-    env_file:
-      - .env.dev
-      - .env.dev.local
-    environment:
-      API_URL_FILE: ${API_URL_FILE}
-      VITE_API_BASE_URL: ${VITE_API_BASE_URL}
-      FRONTEND_PORT: ${FRONTEND_PORT}
-      VITE_HOST: ${VITE_HOST}
-      API_URL_WAIT_TIMEOUT_SECONDS: ${API_URL_WAIT_TIMEOUT_SECONDS}
-    ports:
-      - '${FRONTEND_PORT}:${FRONTEND_PORT}'
-    depends_on:
-      deployer:
-        condition: service_healthy
-    volumes:
-      # Bind-mount the source tree for Vite HMR.
-      - ./:/app
-      # Two node_modules volumes: the bind mount would otherwise hide the
-      # image-installed deps, breaking the dev server.
-      - frontend-root-node-modules:/app/node_modules
-      - frontend-package-node-modules:/app/packages/frontend/node_modules
-      # Read-only mount of the shared API URL file written by the deployer.
-      - shared-data:${SHARED_DATA_DIR}:ro
-    networks:
-      - local-dev
-    healthcheck:
-      test: ['CMD-SHELL', 'curl -sf "http://$${FRONTEND_HEALTH_HOST}:$${FRONTEND_PORT}" >/dev/null']
-      interval: ${HEALTHCHECK_INTERVAL}
-      timeout: ${HEALTHCHECK_TIMEOUT}
-      retries: ${FRONTEND_HEALTHCHECK_RETRIES}
 
 networks:
   local-dev:
@@ -169,9 +84,3 @@ volumes:
     name: ${POSTGRES_VOLUME_NAME}
   localstack-data:
     name: ${LOCALSTACK_VOLUME_NAME}
-  shared-data:
-    name: ${SHARED_DATA_VOLUME_NAME}
-  frontend-root-node-modules:
-    name: ${FRONTEND_ROOT_NODE_MODULES_VOLUME_NAME}
-  frontend-package-node-modules:
-    name: ${FRONTEND_PACKAGE_NODE_MODULES_VOLUME_NAME}

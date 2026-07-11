@@ -95,7 +95,7 @@ export type JwtSource =
   | { kind: 'plain-env'; secret: string; previousSecret: string }
   | { kind: 'ssm-parameter'; parameterName: string; previousParameterName: string };
 
-interface LambdaSpec {
+export interface LambdaSpec {
   id: string;
   functionName: string;
   /** The handler entry file in `packages/backend/src/<sourceBc>/...` */
@@ -111,7 +111,7 @@ interface LambdaSpec {
  * handlers; `inventory`, `alerts`, `orders` still resolve to the
  * placeholder and land in PR 2b/2c.
  */
-const LAMBDAS: readonly LambdaSpec[] = [
+export const LAMBDAS: readonly LambdaSpec[] = [
   {
     id: 'AuthLambda',
     functionName: 'auth-lambda',

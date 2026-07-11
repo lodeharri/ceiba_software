@@ -15,6 +15,10 @@ function viteBuild(): number {
     execSync('pnpm --filter frontend exec vite build --mode test', {
       stdio: 'pipe',
       cwd: process.cwd(),
+      // PR 3 (REQ-FHC-2): the envValidation() Vite plugin fails the build
+      // when VITE_API_BASE_URL is missing. The dev URL is the standard
+      // default used in docs/LOCAL-DEV.md and .env.development.
+      env: { ...process.env, VITE_API_BASE_URL: 'http://localhost:3001/api/v1' },
     });
     return 0;
   } catch (error) {
