@@ -51,7 +51,7 @@ test('inventory: ENTRADA increases stock', async ({ request, baseURL }) => {
 
   expect(response.status()).toBe(201);
   const body = await response.json();
-  expect(body.data.stockAfter).toBe(initialStock + 25);
+  expect(body.stockAfter).toBe(initialStock + 25);
 });
 
 /**
@@ -72,7 +72,7 @@ test('inventory: SALIDA decreases stock', async ({ request, baseURL }) => {
 
   expect(response.status()).toBe(201);
   const body = await response.json();
-  expect(body.data.stockAfter).toBe(30);
+  expect(body.stockAfter).toBe(30);
 });
 
 /**

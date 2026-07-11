@@ -59,7 +59,11 @@ function goToCreate() {
         {{ categories.error }}
       </div>
 
-      <ProductTable :products="products.items" :loading="products.loading" />
+      <ProductTable
+        :products="products.items"
+        :categories="categories.items"
+        :loading="products.loading"
+      />
 
       <!-- Pagination -->
       <div v-if="products.total > 0" class="mt-4 text-sm text-text-muted text-center">

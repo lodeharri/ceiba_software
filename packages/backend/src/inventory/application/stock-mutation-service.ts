@@ -42,9 +42,20 @@ export interface RecordMovementInput {
   userId: string;
 }
 
+/**
+ * Return type of `StockMutationService.record()`.
+ * Matches `movementSchema` (packages/shared) so the frontend
+ * Zod validation passes on the HTTP response body.
+ */
 export interface RecordMovementResult {
-  movementId: string;
+  id: string;
+  productId: string;
+  type: 'ENTRADA' | 'SALIDA';
+  quantity: number;
+  reason: string;
+  userId: string;
   stockAfter: number;
+  createdAt: string; // ISO-8601 datetime string (Prisma Date → serialized by handler)
 }
 
 /**
@@ -158,7 +169,16 @@ export class StockMutationService {
           });
         }
 
-        return { movementId: movement.id, stockAfter: newStock };
+        return {
+          id: movement.id,
+          productId: movement.productId,
+          type: movement.type as 'ENTRADA' | 'SALIDA',
+          quantity: movement.quantity,
+          reason: movement.reason,
+          userId: movement.userId,
+          stockAfter: movement.stockAfter,
+          createdAt: movement.createdAt.toISOString(),
+        };
       },
       { isolationLevel: 'ReadCommitted' },
     );

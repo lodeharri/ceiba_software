@@ -67,7 +67,7 @@ export function parseCookies(header: string | undefined): string[] {
 export interface ApiGatewayProxyEventArgs {
   req: IncomingMessage;
   method: string;
-  /** APIGW v2-style raw path (no `/api/v1` prefix). Mirrors the AWS payload. */
+  /** APIGW v2-style raw path (with `/api/v1` prefix, mirrors real AWS payload). */
   rawPath: string;
   /** Full path the client requested (with `/api/v1` prefix). PR 4: `routeKey`
    *  MUST include the prefix so the per-BC dispatchers in
@@ -92,8 +92,8 @@ export function toApiGatewayProxyEventV2(args: ApiGatewayProxyEventArgs): DevEve
     (typeof req.socket?.remoteAddress === 'string' && req.socket.remoteAddress) || '127.0.0.1';
   const now = new Date();
   // PR 4: routeKey carries the prefixed fullPath so the BC dispatchers can
-  // match their ROUTES tables. rawPath stays prefix-stripped to mirror the
-  // AWS APIGW v2 wire format.
+  // match their ROUTES tables. rawPath carries the fullPath (with prefix)
+  // to mirror the real AWS APIGW v2 wire format.
   // Caller may override routeKey (e.g. dev-server uses the REGISTERED
   // routeKey template `GET /api/v1/products/{id}/movements` instead of the
   // substituted path so the dispatcher's literal-key ROUTES tables match).

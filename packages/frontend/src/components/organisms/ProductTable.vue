@@ -8,14 +8,19 @@
 import { useRouter } from 'vue-router';
 import StatusBadge from '@/components/molecules/StatusBadge.vue';
 import type { Product } from '@/services/products';
+import type { Category } from '@mercadoexpress/shared/schemas/categories/category.js';
 
 interface Props {
   products: Product[];
+  categories?: Category[];
   loading?: boolean;
 }
 
-const props = withDefaults(defineProps<Props>(), { loading: false });
-void props; // expose to template without unused var warning
+const props = withDefaults(defineProps<Props>(), {
+  categories: () => [],
+  loading: false,
+});
+
 const router = useRouter();
 
 function stockStatus(product: Product): 'ok' | 'warning' | 'danger' {
@@ -36,7 +41,9 @@ function navigateToDetail(id: string) {
 }
 
 function getCategoryName(product: Product): string {
-  return ((product as Record<string, unknown>).categoryName as string) ?? '—';
+  if (!product.categoryId) return '—';
+  const found = props.categories.find((c) => c.id === product.categoryId);
+  return found?.name ?? '—';
 }
 </script>
 

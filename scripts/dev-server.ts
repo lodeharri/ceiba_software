@@ -476,11 +476,13 @@ function startRequest(context: RequestContext, req: IncomingMessage, res: Server
     const event = toApiGatewayProxyEventV2({
       req,
       method,
-      rawPath: pathAfterPrefix,
-      // PR 4: routeKey must include `/api/v1` so the BC dispatchers'
+      // rawPath must include the `/api/v1` prefix to match real APIGW v2
+      // wire format (full path including stage prefix, not pathAfterPrefix).
+      // Handlers like get-product.ts use regexes that expect the prefix.
+      rawPath: fullPath,
+      // routeKey must include `/api/v1` so the BC dispatchers'
       // ROUTES tables (which key on the prefix) can match.
       routeKey,
-      fullPath,
       rawQueryString,
       ...(body !== undefined ? { body } : {}),
       cookies,

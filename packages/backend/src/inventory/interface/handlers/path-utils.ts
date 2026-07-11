@@ -3,14 +3,12 @@
  *
  * Extracts path parameters from API Gateway v2 rawPath.
  *
- * NOTE: APIGW v2 strips the stage prefix from rawPath. The dev-server
- * matches the production wire format exactly, so the prefix is NOT
- * present here. (Route templates with `{id}` are matched separately by
- * the dev-server's `matchRoute` before the handler is invoked.)
+ * NOTE: APIGW v2 rawPath includes the stage prefix (e.g., `/api/v1`).
+ * The regex must match the full rawPath format.
  */
 
 /** UUID v4 pattern extracted from the productId path segment. */
-const PRODUCT_ID_IN_MOVEMENTS = /^\/products\/(?<productId>[0-9a-fA-F-]{36})\/movements/;
+const PRODUCT_ID_IN_MOVEMENTS = /^\/api\/v1\/products\/(?<productId>[0-9a-fA-F-]{36})\/movements/;
 
 /**
  * Extracts the productId UUID from a rawPath like
