@@ -9,12 +9,22 @@
 
 import type { AlertProps } from '../alert.js';
 
+export interface Page<T> {
+  items: T[];
+  page: number;
+  size: number;
+  total: number;
+  hasMore: boolean;
+}
+
+export interface ListAlertsOptions {
+  status?: 'ACTIVA' | 'RESUELTA';
+  page: number;
+  size: number;
+}
+
 export interface AlertRepository {
   findById(id: string): Promise<AlertProps | null>;
-  list(args: {
-    status?: 'ACTIVA' | 'RESUELTA';
-    page: number;
-    size: number;
-  }): Promise<{ items: AlertProps[]; total: number }>;
+  list(args: ListAlertsOptions): Promise<Page<AlertProps>>;
   count(args: { status?: 'ACTIVA' | 'RESUELTA' }): Promise<number>;
 }

@@ -50,16 +50,21 @@ beforeEach(() => {
 });
 
 describe('POST /api/v1/orders handler', () => {
-  it('returns 201 with order on happy path', async () => {
+  it('returns 201 with composed order on happy path', async () => {
     _getMockCreateOrder().mockResolvedValue({
       id: '1',
       productId: VALID_PRODUCT,
+      productName: 'Cerveza',
+      productSku: 'SKU-001',
       quantity: 60,
       supplierSnapshot: 'SnacksCorp',
       fromAlertId: null,
       status: 'PENDIENTE',
+      rejectionReason: null,
+      createdBy: VALID_SUB,
       createdAt: '2025-01-01T00:00:00.000Z',
       updatedAt: '2025-01-01T00:00:00.000Z',
+      receivedAt: null,
     });
     const result = await (
       handler as (
@@ -72,6 +77,8 @@ describe('POST /api/v1/orders handler', () => {
     const body = JSON.parse(result.body!);
     expect(body.id).toBe('1');
     expect(body.status).toBe('PENDIENTE');
+    expect(body.productName).toBe('Cerveza');
+    expect(body.productSku).toBe('SKU-001');
   });
 
   it('returns 400 for invalid JSON body', async () => {

@@ -20,7 +20,23 @@ vi.mock('./bootstrap.js', () => ({
   getOrdersBootstrap: vi.fn(() => ({
     listOrdersUseCase: {
       execute: vi.fn().mockResolvedValue({
-        items: [{ id: '1', status: 'PENDIENTE' }],
+        items: [
+          {
+            id: '1',
+            productId: 'p1',
+            productName: 'Cerveza',
+            productSku: 'SKU-001',
+            quantity: 60,
+            supplierSnapshot: 'SnacksCorp',
+            fromAlertId: null,
+            status: 'PENDIENTE',
+            rejectionReason: null,
+            createdBy: 'u1',
+            createdAt: '2025-01-01T00:00:00.000Z',
+            updatedAt: '2025-01-01T00:00:00.000Z',
+            receivedAt: null,
+          },
+        ],
         page: 1,
         size: 20,
         total: 1,
@@ -35,11 +51,17 @@ const { handler } = await import('./list-orders.js');
 const CTX = { requestId: 'r-123', logger: { info: vi.fn(), error: vi.fn() } } as unknown;
 
 describe('GET /api/v1/orders handler', () => {
-  it('returns 200 with order list', async () => {
+  it('returns 200 with composed order list', async () => {
     const result = await (
-      handler as (e: APIGatewayProxyEventV2, c: unknown) => Promise<{ statusCode: number }>
+      handler as (
+        e: APIGatewayProxyEventV2,
+        c: unknown,
+      ) => Promise<{ statusCode: number; body?: string }>
     )(makeEvent(), CTX);
     expect(result.statusCode).toBe(200);
+    const body = JSON.parse(result.body!);
+    expect(body.items[0].productName).toBe('Cerveza');
+    expect(body.items[0].productSku).toBe('SKU-001');
   });
 
   it('returns 400 for invalid status filter', async () => {

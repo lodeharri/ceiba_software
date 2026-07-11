@@ -67,16 +67,16 @@ export class PrismaOrderRepository implements OrderRepository {
     const row = await this.prisma.purchaseOrder.create({
       data: {
         id: props.id,
-        product_id: props.productId,
+        productId: props.productId,
         quantity: props.quantity,
         status: props.status,
-        supplier_snapshot: props.supplierSnapshot,
-        from_alert_id: props.fromAlertId,
+        supplierSnapshot: props.supplierSnapshot,
+        fromAlertId: props.fromAlertId,
         reason: props.reason,
-        created_by: props.createdBy,
-        received_at: props.receivedAt,
-        created_at: props.createdAt,
-        updated_at: props.updatedAt,
+        createdBy: props.createdBy,
+        receivedAt: props.receivedAt,
+        createdAt: props.createdAt,
+        updatedAt: props.updatedAt,
       },
     });
     return rowToProps(row);
@@ -101,13 +101,13 @@ export class PrismaOrderRepository implements OrderRepository {
     hasMore: boolean;
   }> {
     const where: Record<string, unknown> = {};
-    if (opts.productId) where.product_id = opts.productId;
+    if (opts.productId) where.productId = opts.productId;
     if (opts.status) where.status = opts.status;
 
     const [rows, total] = await Promise.all([
       this.prisma.purchaseOrder.findMany({
         where,
-        orderBy: { created_at: 'desc' },
+        orderBy: { createdAt: 'desc' },
         skip: (opts.page - 1) * opts.size,
         take: opts.size,
       }),
@@ -130,13 +130,13 @@ export class PrismaOrderRepository implements OrderRepository {
   ): Promise<PurchaseOrderProps> {
     const data: Record<string, unknown> = {
       status,
-      updated_at: new Date(),
+      updatedAt: new Date(),
     };
     if (reason !== undefined) {
       data.reason = reason;
     }
     if (status === 'RECIBIDA') {
-      data.received_at = new Date();
+      data.receivedAt = new Date();
     }
     const row = await this.prisma.purchaseOrder.update({ where: { id }, data });
     return rowToProps(row);
@@ -150,10 +150,10 @@ export class PrismaOrderRepository implements OrderRepository {
     const client = (tx as TxLike) ?? this.prisma;
     const data: Record<string, unknown> = {
       status,
-      updated_at: new Date(),
+      updatedAt: new Date(),
     };
     if (status === 'RECIBIDA') {
-      data.received_at = new Date();
+      data.receivedAt = new Date();
     }
     const row = await client.purchaseOrder.update({ where: { id }, data });
     return rowToProps(row);

@@ -5,14 +5,24 @@
  *
  * ## Dependency injection
  *
- * ReceiveOrderUseCase consumes three ports:
+ * ReceiveOrderUseCase consumes four ports:
  *   - OrderRepository (this BC) → PrismaOrderRepository
+ *   - ProductReadRepository (products BC) → PrismaProductReadRepository
  *   - ProductStockGate (inventory BC) → PrismaProductStockGate
  *   - AlertCloserPort (alerts BC) → PrismaAlertCloserPort
  *
  * CreateOrderUseCase consumes:
- *   - ProductReadRepository → PrismaProductReadRepository
- *   - AlertReadRepository → PrismaAlertReadRepository
+ *   - OrderRepository (this BC) → PrismaOrderRepository
+ *   - ProductReadRepository (products BC) → PrismaProductReadRepository
+ *   - AlertReadRepository (alerts BC) → PrismaAlertReadRepository
+ *
+ * ApproveOrderUseCase / RejectOrderUseCase consume:
+ *   - OrderRepository
+ *   - ProductReadRepository (for the composed read-model response)
+ *
+ * ListOrdersUseCase / GetOrderUseCase consume:
+ *   - OrderRepository
+ *   - ProductReadRepository (for the composed read-model response)
  */
 
 import { getPrismaClient } from '../../../shared/prisma-client.js';
@@ -73,11 +83,17 @@ export function bootstrapOrders(): OrdersBootstrap {
   const instance: OrdersBootstrap = {
     logger,
     createOrderUseCase: new CreateOrderUseCase(orderRepo, productReadRepo, alertReadRepo),
-    approveOrderUseCase: new ApproveOrderUseCase(orderRepo),
-    rejectOrderUseCase: new RejectOrderUseCase(orderRepo),
-    receiveOrderUseCase: new ReceiveOrderUseCase(prisma, orderRepo, stockGate, alertCloser),
-    listOrdersUseCase: new ListOrdersUseCase(orderRepo),
-    getOrderUseCase: new GetOrderUseCase(orderRepo),
+    approveOrderUseCase: new ApproveOrderUseCase(orderRepo, productReadRepo),
+    rejectOrderUseCase: new RejectOrderUseCase(orderRepo, productReadRepo),
+    receiveOrderUseCase: new ReceiveOrderUseCase(
+      prisma,
+      orderRepo,
+      productReadRepo,
+      stockGate,
+      alertCloser,
+    ),
+    listOrdersUseCase: new ListOrdersUseCase(orderRepo, productReadRepo),
+    getOrderUseCase: new GetOrderUseCase(orderRepo, productReadRepo),
   };
 
   g.__mercadoExpressOrders = instance;

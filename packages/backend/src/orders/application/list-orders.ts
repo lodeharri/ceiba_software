@@ -3,29 +3,25 @@
  *
  * Lists orders with optional filters (productId, status) and pagination.
  * Ordered by createdAt DESC.
+ *
+ * Each row is composed via `composeOrder(order, product)` so the response
+ * matches the canonical flat `Order` read model in `packages/shared` —
+ * productName / productSku are required by the schema, never undefined.
+ * Orders whose product has been deleted since creation are silently
+ * dropped (the partial unique constraints in the schema make this race
+ * narrow; surfacing a 422 for every dropped row in a list would be
+ * hostile UX). This mirrors the alerts BC `composeAlert` list pattern.
  */
 
 import type { OrderRepository, ListOrdersOptions } from '../domain/ports/order-repository.js';
+import type { ProductReadRepository } from '../domain/ports/product-read-repository.js';
+import { composeOrder, type OrderReadModel } from './compose-order.js';
 
 export interface ListOrdersInput {
   productId?: string;
   status?: 'PENDIENTE' | 'APROBADA' | 'RECHAZADA' | 'RECIBIDA';
   page: number;
   size: number;
-}
-
-export interface OrderReadModel {
-  id: string;
-  productId: string;
-  quantity: number;
-  status: string;
-  supplierSnapshot: string;
-  fromAlertId: string | null;
-  rejectionReason: string | null;
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
-  receivedAt: string | null;
 }
 
 export interface ListOrdersResult {
@@ -36,36 +32,11 @@ export interface ListOrdersResult {
   hasMore: boolean;
 }
 
-function toReadModel(p: {
-  id: string;
-  productId: string;
-  quantity: number;
-  status: string;
-  supplierSnapshot: string;
-  fromAlertId: string | null;
-  reason: string | null;
-  createdBy: string;
-  receivedAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-}): OrderReadModel {
-  return {
-    id: p.id,
-    productId: p.productId,
-    quantity: p.quantity,
-    status: p.status,
-    supplierSnapshot: p.supplierSnapshot,
-    fromAlertId: p.fromAlertId,
-    rejectionReason: p.reason,
-    createdBy: p.createdBy,
-    createdAt: p.createdAt.toISOString(),
-    updatedAt: p.updatedAt.toISOString(),
-    receivedAt: p.receivedAt?.toISOString() ?? null,
-  };
-}
-
 export class ListOrdersUseCase {
-  constructor(private readonly orderRepo: OrderRepository) {}
+  constructor(
+    private readonly orderRepo: OrderRepository,
+    private readonly productRepo: ProductReadRepository,
+  ) {}
 
   async execute(input: ListOrdersInput): Promise<ListOrdersResult> {
     const opts: ListOrdersOptions = {
@@ -75,8 +46,18 @@ export class ListOrdersUseCase {
       ...(input.status !== undefined ? { status: input.status } : {}),
     };
     const result = await this.orderRepo.list(opts);
+
+    // Compose each row. Drop orders whose product has been deleted.
+    const items: OrderReadModel[] = [];
+    for (const order of result.items) {
+      const product = await this.productRepo.findById(order.productId);
+      if (product) {
+        items.push(composeOrder(order, product));
+      }
+    }
+
     return {
-      items: result.items.map(toReadModel),
+      items,
       page: result.page,
       size: result.size,
       total: result.total,

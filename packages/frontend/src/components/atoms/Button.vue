@@ -15,7 +15,7 @@ withDefaults(defineProps<Props>(), {
   loading: false,
 });
 
-defineEmits<{ (e: 'click', event: MouseEvent): void }>();
+const emit = defineEmits<{ (e: 'click', event: MouseEvent): void }>();
 </script>
 
 <template>
@@ -42,6 +42,7 @@ defineEmits<{ (e: 'click', event: MouseEvent): void }>();
       disabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : '',
     ]"
     v-bind="$attrs"
+    @click="emit('click', $event)"
   >
     <!-- Loading spinner -->
     <svg

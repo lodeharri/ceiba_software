@@ -57,43 +57,56 @@ describe('ListAlerts (alerts BC — application)', () => {
     useCase = new ListAlerts(stubs.alertRepo, stubs.productRead);
   });
 
-  it('returns paginated alerts with product snapshot', async () => {
+  it('returns paginated flat alerts with composed product snapshot', async () => {
     stubs.listMock.mockResolvedValue({
       items: [makeAlert()],
+      page: 1,
+      size: 20,
       total: 1,
+      hasMore: false,
     });
     stubs.findProductMock.mockResolvedValue(makeProduct());
 
-    const result = await useCase.execute({ status: 'BOTH', page: 0, size: 20 });
+    const result = await useCase.execute({ status: 'BOTH', page: 1, size: 20 });
 
     expect(result.items).toHaveLength(1);
-    expect(result.items[0]!.alert.id).toBe(ALERT_ID);
-    expect(result.items[0]!.product.name).toBe('Test Product');
+    // Flat read model: id / productName / productSku live on the item itself
+    // (NOT under a nested `alert` / `product` shape — that contract was removed).
+    expect(result.items[0]!.id).toBe(ALERT_ID);
+    expect(result.items[0]!.productName).toBe('Test Product');
+    expect(result.items[0]!.productSku).toBe('SKU123');
+    expect(result.items[0]!.stockAtOpen).toBe(5);
+    expect(result.items[0]!.stockMin).toBe(10);
     expect(result.total).toBe(1);
     expect(result.hasMore).toBe(false);
   });
 
-  it('defaults to status=BOTH, page=0, size=20', async () => {
-    stubs.listMock.mockResolvedValue({ items: [], total: 0 });
+  it('defaults to status=BOTH, page=1, size=20', async () => {
+    stubs.listMock.mockResolvedValue({ items: [], page: 1, size: 20, total: 0, hasMore: false });
 
     await useCase.execute();
 
     expect(stubs.listMock).toHaveBeenCalledWith({
-      status: undefined, // BOTH means no filter
-      page: 0,
+      page: 1,
       size: 20,
     });
   });
 
   it('filters by ACTIVA status', async () => {
-    stubs.listMock.mockResolvedValue({ items: [makeAlert()], total: 1 });
+    stubs.listMock.mockResolvedValue({
+      items: [makeAlert()],
+      page: 1,
+      size: 20,
+      total: 1,
+      hasMore: false,
+    });
     stubs.findProductMock.mockResolvedValue(makeProduct());
 
     await useCase.execute({ status: 'ACTIVA' });
 
     expect(stubs.listMock).toHaveBeenCalledWith({
       status: 'ACTIVA',
-      page: 0,
+      page: 1,
       size: 20,
     });
   });
@@ -101,7 +114,10 @@ describe('ListAlerts (alerts BC — application)', () => {
   it('filters by RESUELTA status', async () => {
     stubs.listMock.mockResolvedValue({
       items: [makeAlert({ status: 'RESUELTA', resolvedAt: new Date() })],
+      page: 1,
+      size: 20,
       total: 1,
+      hasMore: false,
     });
     stubs.findProductMock.mockResolvedValue(makeProduct());
 
@@ -109,13 +125,19 @@ describe('ListAlerts (alerts BC — application)', () => {
 
     expect(stubs.listMock).toHaveBeenCalledWith({
       status: 'RESUELTA',
-      page: 0,
+      page: 1,
       size: 20,
     });
   });
 
   it('returns correct pagination metadata', async () => {
-    stubs.listMock.mockResolvedValue({ items: [makeAlert()], total: 50 });
+    stubs.listMock.mockResolvedValue({
+      items: [makeAlert()],
+      page: 1,
+      size: 10,
+      total: 50,
+      hasMore: true,
+    });
     stubs.findProductMock.mockResolvedValue(makeProduct());
 
     const result = await useCase.execute({ page: 1, size: 10 });
@@ -130,5 +152,49 @@ describe('ListAlerts (alerts BC — application)', () => {
     await expect(
       useCase.execute({ status: 'INVALID' as any }), // eslint-disable-line @typescript-eslint/no-explicit-any
     ).rejects.toThrow(/status/i);
+  });
+
+  it('serializes resolvedAt as ISO string and createdAt as ISO string', async () => {
+    const resolvedAt = new Date('2025-01-16T12:00:00Z');
+    stubs.listMock.mockResolvedValue({
+      items: [makeAlert({ status: 'RESUELTA', resolvedAt })],
+      page: 1,
+      size: 20,
+      total: 1,
+      hasMore: false,
+    });
+    stubs.findProductMock.mockResolvedValue(makeProduct());
+
+    const result = await useCase.execute({ status: 'RESUELTA' });
+
+    expect(result.items[0]!.status).toBe('RESUELTA');
+    expect(result.items[0]!.resolvedAt).toBe('2025-01-16T12:00:00.000Z');
+    expect(result.items[0]!.createdAt).toBe('2025-01-15T10:00:00.000Z');
+  });
+
+  it('silently drops alerts whose product has been deleted', async () => {
+    const SECOND_PRODUCT_ID = '22222222-2222-4222-8222-222222222222';
+    stubs.listMock.mockResolvedValue({
+      items: [
+        makeAlert(),
+        makeAlert({
+          id: 'bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+          productId: SECOND_PRODUCT_ID,
+        }),
+      ],
+      page: 1,
+      size: 20,
+      total: 2,
+      hasMore: false,
+    });
+    // First product exists, second is gone (deleted since the alert opened).
+    stubs.findProductMock.mockImplementation(async (id: string) =>
+      id === PRODUCT_ID ? makeProduct() : null,
+    );
+
+    const result = await useCase.execute();
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]!.id).toBe(ALERT_ID);
   });
 });

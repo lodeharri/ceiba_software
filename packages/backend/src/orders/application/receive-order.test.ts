@@ -1,21 +1,20 @@
 /**
  * RED test: ReceiveOrderUseCase — four-step atomic flow (PR 2c, ADR-3).
  *
- * The four steps inside prisma.$transaction:
+ * Steps inside prisma.$transaction:
  *   1. orderRepository.txUpdate(id, 'RECIBIDA')
  *   2. productStockGate.txIncrementStock(tx, productId, ENTRADA, qty, reason, userId)
  *   3. alertCloserPort.txCloseIfOpenAndAboveMin(tx, productId, newStock, stockMin)
- *   4. Returns { order, stockAfter, closedAlertId? }
+ *   4. compose read model with the pre-fetched product
  *
- * Duplicate-receive test (RISK-W07):
- *   Second receive on already-RECIBIDA order → state machine throws 409.
- *
- * Rollback test:
- *   Stub ProductStockGate to throw → order stays APROBADA.
+ * Duplicate-receive (RISK-W07): second receive on already-RECIBIDA order → 409.
+ * Rollback: stub ProductStockGate to throw → order stays APROBADA.
+ * Product-deleted edge case: product deleted between approval and receive → 422.
  */
 
 import { describe, expect, it } from 'vitest';
 import type { OrderRepository } from '../domain/ports/order-repository.js';
+import type { ProductReadRepository } from '../domain/ports/product-read-repository.js';
 import type { ProductStockGate } from '../domain/ports/product-stock-gate.js';
 import type { AlertCloserPort } from '../domain/ports/alert-closer-port.js';
 import type { PurchaseOrderProps } from '../domain/purchase-order.js';
@@ -41,132 +40,126 @@ function makeOrder(status: PurchaseOrderProps['status'] = 'APROBADA'): PurchaseO
   };
 }
 
+function makeProductRepo(
+  product: { id: string; sku: string; name: string; supplier: string; stockMin: number } | null = {
+    id: P,
+    sku: 'SKU-001',
+    name: 'Cerveza',
+    supplier: 'SnacksCorp',
+    stockMin: 30,
+  },
+): ProductReadRepository {
+  return {
+    async findById(id) {
+      void id;
+      return product;
+    },
+  };
+}
+
+function makeUseCase(
+  orderRepo: OrderRepository,
+  productRepo: ProductReadRepository,
+  stockGate: ProductStockGate,
+  alertCloser: AlertCloserPort,
+  txRunner: (fn: (tx: unknown) => Promise<unknown>) => Promise<unknown> = (fn) => fn({}),
+): ReceiveOrderUseCase {
+  const mockPrisma = { $transaction: txRunner };
+  return new ReceiveOrderUseCase(
+    mockPrisma as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    orderRepo,
+    productRepo,
+    stockGate,
+    alertCloser,
+  );
+}
+
+function makeHappyOrderRepo(): OrderRepository {
+  return {
+    async create() {
+      throw new Error('not used');
+    },
+    async findById() {
+      return makeOrder('APROBADA');
+    },
+    async findByIdTx(_tx, id) {
+      void _tx;
+      void id;
+      return makeOrder('APROBADA');
+    },
+    async list() {
+      throw new Error('not used');
+    },
+    async updateStatus() {
+      throw new Error('not used');
+    },
+    async txUpdate(_tx, id, status) {
+      void _tx;
+      void id;
+      return { ...makeOrder('APROBADA'), status, receivedAt: new Date() };
+    },
+  };
+}
+
+function makeStockGate(stockAfter: number): ProductStockGate {
+  return {
+    async txIncrementStock(_tx, args) {
+      void _tx;
+      void args;
+      return {
+        productId: P,
+        type: 'ENTRADA',
+        quantity: 60,
+        stockAfter,
+        stockMin: 30,
+        occurredAt: new Date(),
+      };
+    },
+  };
+}
+
+function makeAlertCloser(closedAlertId: string | null): AlertCloserPort {
+  return {
+    async txCloseIfOpenAndAboveMin() {
+      return closedAlertId === null ? null : { alertId: closedAlertId };
+    },
+  };
+}
+
 describe('ReceiveOrderUseCase — four-step atomic flow (ADR-3)', () => {
   it('happy APROBADA → RECIBIDA with stock increment and alert close', async () => {
-    const orderRepo: OrderRepository = {
-      async create() {
-        throw new Error('not used');
-      },
-      async findById() {
-        return makeOrder('APROBADA');
-      },
-      async findByIdTx(_tx, id) {
-        void _tx;
-        void id;
-        return makeOrder('APROBADA');
-      },
-      async list() {
-        throw new Error('not used');
-      },
-      async updateStatus() {
-        throw new Error('not used');
-      },
-      async txUpdate(_tx, id, status) {
-        void _tx;
-        void id;
-        return { ...makeOrder('APROBADA'), status, receivedAt: new Date() };
-      },
-    };
-
-    const stockGate: ProductStockGate = {
-      async txIncrementStock(_tx, args) {
-        void _tx;
-        void args;
-        return {
-          productId: P,
-          type: 'ENTRADA',
-          quantity: 60,
-          stockAfter: 80,
-          stockMin: 30,
-          occurredAt: new Date(),
-        };
-      },
-    };
-
-    const alertCloser: AlertCloserPort = {
-      async txCloseIfOpenAndAboveMin(_tx, args) {
-        void _tx;
-        void args;
-        return { alertId: 'alert-1' };
-      },
-    };
-
-    // Mock prisma.$transaction to run the callback synchronously
-    const mockPrisma = {
-      $transaction: (fn: (tx: unknown) => Promise<unknown>) => fn({}),
-    };
-
-    const useCase = new ReceiveOrderUseCase(
-      mockPrisma as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-      orderRepo,
-      stockGate,
-      alertCloser,
+    const useCase = makeUseCase(
+      makeHappyOrderRepo(),
+      makeProductRepo(),
+      makeStockGate(80),
+      makeAlertCloser('alert-1'),
     );
     const result = await useCase.execute(O, 'Received by order', U);
 
-    expect(result.status).toBe('RECIBIDA');
+    expect(result.order.status).toBe('RECIBIDA');
+    expect(result.order.productName).toBe('Cerveza');
+    expect(result.order.productSku).toBe('SKU-001');
+    expect(result.order.productId).toBe(P);
+    expect(result.order.quantity).toBe(60);
+    expect(result.order.supplierSnapshot).toBe('SnacksCorp');
+    expect(result.order.rejectionReason).toBeNull();
+    expect(typeof result.order.receivedAt).toBe('string');
     expect(result.stockAfter).toBe(80);
     expect(result.closedAlertId).toBe('alert-1');
   });
 
   it('APROBADA → RECIBIDA, no alert to close', async () => {
-    const orderRepo: OrderRepository = {
-      async create() {
-        throw new Error('not used');
-      },
-      async findById() {
-        return makeOrder('APROBADA');
-      },
-      async findByIdTx(_tx, id) {
-        void _tx;
-        void id;
-        return makeOrder('APROBADA');
-      },
-      async list() {
-        throw new Error('not used');
-      },
-      async updateStatus() {
-        throw new Error('not used');
-      },
-      async txUpdate(_tx, id, status) {
-        void _tx;
-        void id;
-        return { ...makeOrder('APROBADA'), status, receivedAt: new Date() };
-      },
-    };
-
-    const stockGate: ProductStockGate = {
-      async txIncrementStock(_tx, args) {
-        void _tx;
-        void args;
-        return {
-          productId: P,
-          type: 'ENTRADA',
-          quantity: 60,
-          stockAfter: 50,
-          stockMin: 30,
-          occurredAt: new Date(),
-        };
-      },
-    };
-
-    const alertCloser: AlertCloserPort = {
-      async txCloseIfOpenAndAboveMin() {
-        return null;
-      },
-    };
-
-    const mockPrisma = { $transaction: (fn: (tx: unknown) => Promise<unknown>) => fn({}) };
-
-    const useCase = new ReceiveOrderUseCase(
-      mockPrisma as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-      orderRepo,
-      stockGate,
-      alertCloser,
+    const useCase = makeUseCase(
+      makeHappyOrderRepo(),
+      makeProductRepo(),
+      makeStockGate(50),
+      makeAlertCloser(null),
     );
     const result = await useCase.execute(O, 'Received', U);
 
-    expect(result.status).toBe('RECIBIDA');
+    expect(result.order.status).toBe('RECIBIDA');
+    expect(result.order.productName).toBe('Cerveza');
+    expect(result.order.productSku).toBe('SKU-001');
     expect(result.stockAfter).toBe(50);
     expect(result.closedAlertId).toBeNull();
   });
@@ -194,12 +187,9 @@ describe('ReceiveOrderUseCase — four-step atomic flow (ADR-3)', () => {
         throw new Error('not used');
       },
     };
-
-    const mockPrisma = { $transaction: (fn: (tx: unknown) => Promise<unknown>) => fn({}) };
-
-    const useCase = new ReceiveOrderUseCase(
-      mockPrisma as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    const useCase = makeUseCase(
       orderRepo,
+      makeProductRepo(),
       {} as ProductStockGate,
       {} as AlertCloserPort,
     );
@@ -210,60 +200,23 @@ describe('ReceiveOrderUseCase — four-step atomic flow (ADR-3)', () => {
   });
 
   it('rollback: txIncrementStock throws → entire tx rolls back', async () => {
-    const orderRepo: OrderRepository = {
-      async create() {
-        throw new Error('not used');
-      },
-      async findById() {
-        return makeOrder('APROBADA');
-      },
-      async findByIdTx(_tx, id) {
-        void _tx;
-        void id;
-        return makeOrder('APROBADA');
-      },
-      async list() {
-        throw new Error('not used');
-      },
-      async updateStatus() {
-        throw new Error('not used');
-      },
-      async txUpdate(_tx, id, status) {
-        void _tx;
-        void id;
-        return { ...makeOrder('APROBADA'), status, receivedAt: new Date() };
-      },
-    };
-
     const stockGate: ProductStockGate = {
       async txIncrementStock() {
         throw new Error('DB constraint violation');
       },
     };
-
-    const alertCloser: AlertCloserPort = {
-      async txCloseIfOpenAndAboveMin() {
-        return { alertId: 'alert-1' };
-      },
-    };
-
     let txRan = false;
-    const mockPrisma = {
-      $transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
+    const useCase = makeUseCase(
+      makeHappyOrderRepo(),
+      makeProductRepo(),
+      stockGate,
+      makeAlertCloser('alert-1'),
+      async (fn) => {
         txRan = true;
         return fn({});
       },
-    };
-
-    const useCase = new ReceiveOrderUseCase(
-      mockPrisma as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-      orderRepo,
-      stockGate,
-      alertCloser,
     );
     await expect(useCase.execute(O, 'Received', U)).rejects.toThrow('DB constraint violation');
-    // Note: txRan is true because the $transaction callback DID execute.
-    // The rollback means no partial state is persisted.
     expect(txRan).toBe(true);
   });
 
@@ -290,12 +243,9 @@ describe('ReceiveOrderUseCase — four-step atomic flow (ADR-3)', () => {
         throw new Error('not used');
       },
     };
-
-    const mockPrisma = { $transaction: (fn: (tx: unknown) => Promise<unknown>) => fn({}) };
-
-    const useCase = new ReceiveOrderUseCase(
-      mockPrisma as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    const useCase = makeUseCase(
       orderRepo,
+      makeProductRepo(),
       {} as ProductStockGate,
       {} as AlertCloserPort,
     );
@@ -303,5 +253,27 @@ describe('ReceiveOrderUseCase — four-step atomic flow (ADR-3)', () => {
       code: 'ORDER_INVALID_TRANSITION',
       httpStatus: 409,
     });
+  });
+
+  it('product deleted between approval and receive → 422 ORDER_PRODUCT_INCONSISTENCY (no side effects)', async () => {
+    let stockGateCalled = false;
+    const stockGate: ProductStockGate = {
+      async txIncrementStock() {
+        stockGateCalled = true;
+        throw new Error('should not be reached');
+      },
+    };
+    const useCase = makeUseCase(
+      makeHappyOrderRepo(),
+      makeProductRepo(null),
+      stockGate,
+      makeAlertCloser(null),
+    );
+    await expect(useCase.execute(O, 'Received', U)).rejects.toMatchObject({
+      code: 'INTERNAL_ERROR',
+      httpStatus: 422,
+    });
+    // Critical: the tx must NEVER run when the product is gone.
+    expect(stockGateCalled).toBe(false);
   });
 });

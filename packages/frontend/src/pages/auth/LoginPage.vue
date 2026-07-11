@@ -29,7 +29,7 @@ async function handleLogin() {
     auth.login({
       token: res.token,
       expiresAt: res.expiresAt,
-      user: { id: res.user.id, username: res.user.username, role: res.user.role as 'ADMIN' },
+      user: { id: res.user.id, username: res.user.username, role: res.user.role },
     });
     router.push('/productos');
   } catch {

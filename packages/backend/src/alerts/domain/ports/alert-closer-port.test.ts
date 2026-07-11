@@ -40,7 +40,7 @@ describe('AlertRepository (alerts BC — domain port)', () => {
   it('is a TypeScript interface with findById, list, and count methods', () => {
     const stub: AlertRepository = {
       findById: async () => null,
-      list: async () => [],
+      list: async () => ({ items: [], page: 1, size: 20, total: 0, hasMore: false }),
       count: async () => 0,
     };
     expect(typeof stub.findById).toBe('function');

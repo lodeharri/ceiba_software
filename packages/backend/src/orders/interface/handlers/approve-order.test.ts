@@ -26,7 +26,23 @@ function makeEvent(orderId: string = O): APIGatewayProxyEventV2 {
 
 vi.mock('./bootstrap.js', () => ({
   getOrdersBootstrap: vi.fn(() => ({
-    approveOrderUseCase: { execute: vi.fn().mockResolvedValue({ id: O, status: 'APROBADA' }) },
+    approveOrderUseCase: {
+      execute: vi.fn().mockResolvedValue({
+        id: O,
+        productId: 'product-1',
+        productName: 'Cerveza',
+        productSku: 'SKU-001',
+        quantity: 60,
+        supplierSnapshot: 'SnacksCorp',
+        fromAlertId: null,
+        status: 'APROBADA',
+        rejectionReason: null,
+        createdBy: 'user-1',
+        createdAt: '2025-01-01T00:00:00.000Z',
+        updatedAt: '2025-01-01T00:00:00.000Z',
+        receivedAt: null,
+      }),
+    },
   })),
 }));
 
@@ -34,10 +50,17 @@ const { handler } = await import('./approve-order.js');
 const CTX = { requestId: 'r-123', logger: { info: vi.fn(), error: vi.fn() } } as unknown;
 
 describe('POST /api/v1/orders/{id}/approve handler', () => {
-  it('returns 200 on happy approve', async () => {
+  it('returns 200 on happy approve with composed productName/productSku', async () => {
     const result = await (
-      handler as (e: APIGatewayProxyEventV2, c: unknown) => Promise<{ statusCode: number }>
+      handler as (
+        e: APIGatewayProxyEventV2,
+        c: unknown,
+      ) => Promise<{ statusCode: number; body?: string }>
     )(makeEvent(O), CTX);
     expect(result.statusCode).toBe(200);
+    const body = JSON.parse(result.body!);
+    expect(body.productName).toBe('Cerveza');
+    expect(body.productSku).toBe('SKU-001');
+    expect(body.status).toBe('APROBADA');
   });
 });

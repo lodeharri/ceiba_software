@@ -121,6 +121,9 @@ export class StockMutationService {
         }
 
         // Step 4: Insert StockMovement (append-only, BR-6)
+        // `stockAfter` is denormalized at insert time per
+        // shared/src/schemas/inventory/movement.ts so list views do not
+        // need to walk the ledger to compute it.
         const movement = await tx.stockMovement.create({
           data: {
             id: randomUUID(),
@@ -129,6 +132,7 @@ export class StockMutationService {
             quantity: input.quantity,
             reason: input.reason,
             userId: input.userId,
+            stockAfter: newStock,
             createdAt: new Date(),
           },
         });

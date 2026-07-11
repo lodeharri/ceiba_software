@@ -29,9 +29,21 @@ function makeEvent(overrides: Partial<APIGatewayProxyEventV2> = {}): APIGatewayP
 vi.mock('./bootstrap.js', () => ({
   getOrdersBootstrap: vi.fn(() => ({
     rejectOrderUseCase: {
-      execute: vi
-        .fn()
-        .mockResolvedValue({ id: O, status: 'RECHAZADA', reason: 'Proveedor sin stock.' }),
+      execute: vi.fn().mockResolvedValue({
+        id: O,
+        productId: 'product-1',
+        productName: 'Cerveza',
+        productSku: 'SKU-001',
+        quantity: 60,
+        supplierSnapshot: 'SnacksCorp',
+        fromAlertId: null,
+        status: 'RECHAZADA',
+        rejectionReason: 'Proveedor sin stock hasta el lunes.',
+        createdBy: 'user-1',
+        createdAt: '2025-01-01T00:00:00.000Z',
+        updatedAt: '2025-01-01T00:00:00.000Z',
+        receivedAt: null,
+      }),
     },
   })),
 }));
@@ -40,11 +52,19 @@ const { handler } = await import('./reject-order.js');
 const CTX = { requestId: 'r-123', logger: { info: vi.fn(), error: vi.fn() } } as unknown;
 
 describe('POST /api/v1/orders/{id}/reject handler', () => {
-  it('returns 200 on happy reject', async () => {
+  it('returns 200 on happy reject with composed productName/productSku', async () => {
     const result = await (
-      handler as (e: APIGatewayProxyEventV2, c: unknown) => Promise<{ statusCode: number }>
+      handler as (
+        e: APIGatewayProxyEventV2,
+        c: unknown,
+      ) => Promise<{ statusCode: number; body?: string }>
     )(makeEvent(), CTX);
     expect(result.statusCode).toBe(200);
+    const body = JSON.parse(result.body!);
+    expect(body.productName).toBe('Cerveza');
+    expect(body.productSku).toBe('SKU-001');
+    expect(body.status).toBe('RECHAZADA');
+    expect(body.rejectionReason).toBe('Proveedor sin stock hasta el lunes.');
   });
 
   it('returns 422 when reason < 10 chars', async () => {

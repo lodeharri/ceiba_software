@@ -87,11 +87,14 @@ describe('PrismaAlertRepository (alerts BC — infrastructure)', () => {
     stub._setFindMany(rows);
     stub._setCount(2);
 
-    const result = await repo.list({ status: undefined, page: 0, size: 20 });
+    const result = await repo.list({ page: 1, size: 20 });
 
     expect(result.items).toHaveLength(2);
     expect(result.items[0]!.id).toBe('id-1');
+    expect(result.page).toBe(1);
+    expect(result.size).toBe(20);
     expect(result.total).toBe(2);
+    expect(result.hasMore).toBe(false);
 
     expect(stub._getFindManyMock()).toHaveBeenCalledWith({
       where: {},
@@ -105,7 +108,7 @@ describe('PrismaAlertRepository (alerts BC — infrastructure)', () => {
     stub._setFindMany([alertRow()]);
     stub._setCount(1);
 
-    await repo.list({ status: 'ACTIVA', page: 0, size: 20 });
+    await repo.list({ status: 'ACTIVA', page: 1, size: 20 });
 
     expect(stub._getFindManyMock()).toHaveBeenCalledWith({
       where: { status: 'ACTIVA' },
@@ -119,16 +122,34 @@ describe('PrismaAlertRepository (alerts BC — infrastructure)', () => {
     stub._setFindMany([]);
     stub._setCount(50);
 
-    const result = await repo.list({ status: undefined, page: 2, size: 10 });
+    const result = await repo.list({ page: 2, size: 10 });
 
     expect(stub._getFindManyMock()).toHaveBeenCalledWith({
       where: {},
       orderBy: { createdAt: 'desc' },
-      skip: 20,
+      skip: 10,
       take: 10,
     });
     expect(result.items).toHaveLength(0);
+    expect(result.page).toBe(2);
+    expect(result.size).toBe(10);
     expect(result.total).toBe(50);
+    expect(result.hasMore).toBe(true);
+  });
+
+  it('reports hasMore=false when the current page exhausts the result set', async () => {
+    stub._setFindMany([]);
+    stub._setCount(50);
+
+    const result = await repo.list({ page: 5, size: 10 });
+
+    expect(stub._getFindManyMock()).toHaveBeenCalledWith({
+      where: {},
+      orderBy: { createdAt: 'desc' },
+      skip: 40,
+      take: 10,
+    });
+    expect(result.hasMore).toBe(false);
   });
 
   it('count delegates to prisma with optional status filter', async () => {

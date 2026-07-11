@@ -2,6 +2,9 @@
  * RED test: CreateOrderUseCase (PR 2c, orders/spec.md).
  *
  * Stubbed ports: OrderRepository, ProductReadRepository, AlertReadRepository.
+ *
+ * The composed read model (productName / productSku) is asserted so the
+ * frontend `unshift` into the orders list never produces undefined cells.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -78,6 +81,16 @@ describe('CreateOrderUseCase', () => {
     const result = await useCase.execute({ productId: P, quantity: 60, createdBy: U });
     expect(result.status).toBe('PENDIENTE');
     expect(result.supplierSnapshot).toBe('Distribuidora Andina');
+    // Composed read model — must match the canonical Order shape
+    expect(result.productId).toBe(P);
+    expect(result.productName).toBe('Cerveza');
+    expect(result.productSku).toBe('SKU-001');
+    expect(result.quantity).toBe(60);
+    expect(result.rejectionReason).toBeNull();
+    expect(result.receivedAt).toBeNull();
+    expect(result.createdBy).toBe(U);
+    expect(typeof result.createdAt).toBe('string');
+    expect(typeof result.updatedAt).toBe('string');
   });
 
   it('happy with fromAlertId: creates order linked to ACTIVA alert', async () => {
@@ -93,6 +106,8 @@ describe('CreateOrderUseCase', () => {
       createdBy: U,
     });
     expect(result.fromAlertId).toBe(A);
+    expect(result.productName).toBe('Cerveza');
+    expect(result.productSku).toBe('SKU-001');
   });
 
   it('unknown product → 404 NOT_FOUND', async () => {

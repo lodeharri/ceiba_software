@@ -74,6 +74,10 @@ export interface ApiGatewayProxyEventArgs {
    *  `packages/backend/src/shared/dispatchers/*` (which key their `ROUTES`
    *  tables with the prefix) can match the invocation. */
   fullPath?: string;
+  /** Override for the routeKey. If provided, used as-is (e.g. the registered
+   *  lambda routeKey `GET /api/v1/products/{id}/movements` rather than the
+   *  substituted path). If omitted, defaults to `${method} ${fullPath ?? rawPath}`. */
+  routeKey?: string;
   rawQueryString: string;
   body?: string;
   cookies: string[];
@@ -90,7 +94,10 @@ export function toApiGatewayProxyEventV2(args: ApiGatewayProxyEventArgs): DevEve
   // PR 4: routeKey carries the prefixed fullPath so the BC dispatchers can
   // match their ROUTES tables. rawPath stays prefix-stripped to mirror the
   // AWS APIGW v2 wire format.
-  const routeKey = `${method} ${fullPath}`;
+  // Caller may override routeKey (e.g. dev-server uses the REGISTERED
+  // routeKey template `GET /api/v1/products/{id}/movements` instead of the
+  // substituted path so the dispatcher's literal-key ROUTES tables match).
+  const routeKey = args.routeKey ?? `${method} ${fullPath}`;
   const event: DevEvent = {
     version: '2.0',
     routeKey,

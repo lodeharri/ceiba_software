@@ -26,6 +26,7 @@ export interface AlertReadModelPrisma {
       where: { status: string };
       select: { productId: true };
     }): Promise<AlertIdRow[]>;
+    count(args: { where: { productId: string; status: string } }): Promise<number>;
   };
 }
 
@@ -44,5 +45,12 @@ export class PrismaAlertReadModel implements AlertReadModelPort {
     const seen = new Set<string>();
     for (const r of rows) seen.add(r.productId);
     return [...seen];
+  }
+
+  async hasActiveAlert(productId: string): Promise<boolean> {
+    const count = await this.prisma.alert.count({
+      where: { productId, status: 'ACTIVA' },
+    });
+    return count > 0;
   }
 }

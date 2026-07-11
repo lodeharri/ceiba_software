@@ -108,6 +108,13 @@ describe('StockMutationService (inventory BC — application)', () => {
       expect(result.stockAfter).toBe(15);
       expect(stubPrisma._getCreatedMovements()).toHaveLength(1);
       expect(stubPrisma._getUpdatedProducts()).toHaveLength(1);
+
+      // The StockMovement row must persist stockAfter at insert time so
+      // list views do not need to walk the ledger to compute it.
+      const movement = stubPrisma._getCreatedMovements()[0] as {
+        data: { stockAfter: number };
+      };
+      expect(movement.data.stockAfter).toBe(15);
     });
 
     it('calls SELECT ... FOR UPDATE with correct SQL', async () => {
@@ -313,6 +320,81 @@ describe('StockMutationService (inventory BC — application)', () => {
       });
 
       expect(result.stockAfter).toBe(0);
+    });
+  });
+
+  describe('stockAfter persistence (shared/movement.ts contract)', () => {
+    it('persists the denormalized stockAfter on SALIDA exactly to zero', async () => {
+      stubPrisma._setStock([
+        { id: '11111111-1111-4111-8111-111111111111', stock: 10, stock_min: 3 },
+      ]);
+
+      const service = new StockMutationService(stubPrisma as never, stubAlertCloser);
+
+      await service.record({
+        productId: '11111111-1111-4111-8111-111111111111',
+        type: 'SALIDA',
+        quantity: 10,
+        reason: 'Venta total',
+        userId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      });
+
+      const movement = stubPrisma._getCreatedMovements()[0] as {
+        data: { stockAfter: number };
+      };
+      expect(movement.data.stockAfter).toBe(0);
+    });
+
+    it('persists stockAfter across a sequence of mixed movements', async () => {
+      // Simulates the ledger walk the list view used to need: each new
+      // movement carries its post-mutation stock, so listByProduct can
+      // return the field directly without recomputing. Between calls we
+      // bump `_setStock` to mirror the database state after each tx.
+      const service = new StockMutationService(stubPrisma as never, stubAlertCloser);
+
+      // 1st movement: ENTRADA 5 with stock=10 → stockAfter = 15
+      stubPrisma._setStock([
+        { id: '11111111-1111-4111-8111-111111111111', stock: 10, stock_min: 3 },
+      ]);
+      await service.record({
+        productId: '11111111-1111-4111-8111-111111111111',
+        type: 'ENTRADA',
+        quantity: 5,
+        reason: 'Reposición 1',
+        userId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      });
+
+      // 2nd movement: SALIDA 3 with stock=15 → stockAfter = 12
+      stubPrisma._setStock([
+        { id: '11111111-1111-4111-8111-111111111111', stock: 15, stock_min: 3 },
+      ]);
+      await service.record({
+        productId: '11111111-1111-4111-8111-111111111111',
+        type: 'SALIDA',
+        quantity: 3,
+        reason: 'Venta 1',
+        userId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      });
+
+      // 3rd movement: SALIDA 12 with stock=12 → stockAfter = 0
+      stubPrisma._setStock([
+        { id: '11111111-1111-4111-8111-111111111111', stock: 12, stock_min: 3 },
+      ]);
+      await service.record({
+        productId: '11111111-1111-4111-8111-111111111111',
+        type: 'SALIDA',
+        quantity: 12,
+        reason: 'Venta total',
+        userId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      });
+
+      const movements = stubPrisma._getCreatedMovements() as Array<{
+        data: { stockAfter: number };
+      }>;
+      expect(movements).toHaveLength(3);
+      expect(movements[0]!.data.stockAfter).toBe(15);
+      expect(movements[1]!.data.stockAfter).toBe(12);
+      expect(movements[2]!.data.stockAfter).toBe(0);
     });
   });
 });

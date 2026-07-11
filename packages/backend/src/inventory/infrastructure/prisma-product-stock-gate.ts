@@ -45,7 +45,10 @@ export class PrismaProductStockGate implements ProductStockGate {
     const delta = args.type === 'ENTRADA' ? args.quantity : -args.quantity;
     const stockAfter = Number(row.stock) + delta;
 
-    // Step 3: Insert StockMovement (append-only, BR-6)
+    // Step 3: Insert StockMovement (append-only, BR-6).
+    // `stockAfter` is denormalized at insert time per
+    // shared/src/schemas/inventory/movement.ts so list views do not
+    // need to walk the ledger to compute it.
     const now = new Date();
     await tx.stockMovement.create({
       data: {
@@ -55,6 +58,7 @@ export class PrismaProductStockGate implements ProductStockGate {
         quantity: args.quantity,
         reason: args.reason,
         userId: args.userId,
+        stockAfter,
         createdAt: now,
       },
     });

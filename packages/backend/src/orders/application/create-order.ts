@@ -7,6 +7,10 @@
  *   3. Validate fromAlertId if provided (via AlertReadRepository)
  *   4. Snapshot supplier (Q-P3 — write-once, never refreshed)
  *   5. Persist via OrderRepository
+ *   6. Compose the flat `Order` read model (productName / productSku)
+ *      so the frontend can `unshift` the response into the orders list
+ *      without producing undefined cells. Mirrors the alerts BC `composeAlert`
+ *      pattern.
  */
 
 import type { OrderRepository } from '../domain/ports/order-repository.js';
@@ -15,23 +19,13 @@ import type { AlertReadRepository } from '../domain/ports/alert-read-repository.
 import { OrderQtyBelowPolicyError } from '../domain/errors/order-qty-below-policy.js';
 import { AlertNotActiveError } from '../domain/errors/alert-not-active.js';
 import { OrderNotFoundError } from '../domain/errors/order-not-found.js';
+import { composeOrder, type OrderReadModel } from './compose-order.js';
 
 export interface CreateOrderInput {
   productId: string;
   quantity: number;
   fromAlertId?: string;
   createdBy: string;
-}
-
-export interface CreateOrderResult {
-  id: string;
-  productId: string;
-  quantity: number;
-  supplierSnapshot: string;
-  fromAlertId: string | null;
-  status: 'PENDIENTE';
-  createdAt: string;
-  updatedAt: string;
 }
 
 export class CreateOrderUseCase {
@@ -41,7 +35,7 @@ export class CreateOrderUseCase {
     private readonly alertRepo: AlertReadRepository,
   ) {}
 
-  async execute(input: CreateOrderInput): Promise<CreateOrderResult> {
+  async execute(input: CreateOrderInput): Promise<OrderReadModel> {
     // Step 1: Validate product exists and get stockMin + supplier
     const product = await this.productRepo.findById(input.productId);
     if (!product) {
@@ -88,15 +82,9 @@ export class CreateOrderUseCase {
       updatedAt: new Date(),
     });
 
-    return {
-      id: order.id,
-      productId: order.productId,
-      quantity: order.quantity,
-      supplierSnapshot: order.supplierSnapshot,
-      fromAlertId: order.fromAlertId,
-      status: order.status as 'PENDIENTE',
-      createdAt: order.createdAt.toISOString(),
-      updatedAt: order.updatedAt.toISOString(),
-    };
+    // Step 6: Compose the flat read model. The product was fetched at step 1
+    // and is guaranteed to exist (TS narrows after the throw above), so we
+    // can pass it straight to composeOrder without a null check.
+    return composeOrder(order, product);
   }
 }

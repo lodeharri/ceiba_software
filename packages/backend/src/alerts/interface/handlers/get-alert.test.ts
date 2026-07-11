@@ -44,28 +44,35 @@ function makeEvent(overrides: Partial<APIGatewayProxyEventV2> = {}): APIGatewayP
   } as unknown as APIGatewayProxyEventV2;
 }
 
+/**
+ * Build the flat `AlertReadModel` shape returned by the use case after
+ * `composeAlert(alert, product)` (see `application/compose-alert.ts`).
+ * The handler must serialize this directly — no `{ alert, product }`
+ * wrapper.
+ */
+function makeFlatAlert(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+    productId: '11111111-1111-4111-8111-111111111111',
+    productName: 'Test Product',
+    productSku: 'SKU123',
+    stockAtOpen: 5,
+    stockMin: 10,
+    status: 'ACTIVA',
+    resolvedAt: null,
+    createdAt: '2025-01-15T10:00:00.000Z',
+    ...overrides,
+  };
+}
+
 describe('GET /alerts/{id} handler', () => {
   beforeEach(() => {
     _resetMock();
   });
 
-  it('returns 200 with alert and product snapshot on success', async () => {
+  it('returns 200 with flat alert on success', async () => {
     _getMockGetAlert().mockResolvedValue({
-      alert: {
-        id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
-        productId: '11111111-1111-4111-8111-111111111111',
-        status: 'ACTIVA',
-        type: 'STOCK_BAJO',
-        resolvedAt: undefined,
-        createdAt: new Date('2025-01-15T10:00:00Z'),
-      },
-      product: {
-        id: '11111111-1111-4111-8111-111111111111',
-        name: 'Test Product',
-        sku: 'SKU123',
-        stock: 5,
-        stockMin: 10,
-      },
+      alert: makeFlatAlert(),
     });
 
     const event = makeEvent();
@@ -73,9 +80,28 @@ describe('GET /alerts/{id} handler', () => {
 
     expect(result.statusCode).toBe(200);
     const body = JSON.parse(result.body as string);
+    // Flat shape: id / productName / productSku / stockAtOpen / stockMin
+    // live on `body.alert` (not under nested `alert`/`product` keys).
     expect(body.alert.id).toBe('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
     expect(body.alert.status).toBe('ACTIVA');
-    expect(body.product.name).toBe('Test Product');
+    expect(body.alert.productName).toBe('Test Product');
+    expect(body.alert.productSku).toBe('SKU123');
+    expect(body.alert.stockAtOpen).toBe(5);
+    expect(body.alert.stockMin).toBe(10);
+  });
+
+  it('regression guard: body does not contain a top-level `product` field', async () => {
+    _getMockGetAlert().mockResolvedValue({
+      alert: makeFlatAlert(),
+    });
+
+    const event = makeEvent();
+    const result = await handler(event, {} as never, () => {});
+
+    const body = JSON.parse(result.body as string);
+    // The previous (wrong) shape returned `{ alert: {...}, product: {...} }`.
+    // If a future refactor reintroduces that wrapper, this guard fires.
+    expect(body.product).toBeUndefined();
   });
 
   it('returns 404 for unknown alert id', async () => {

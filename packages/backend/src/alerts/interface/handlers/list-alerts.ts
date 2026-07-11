@@ -1,7 +1,13 @@
 /**
- * Alerts BC — `GET /alerts` Lambda handler (PR 2b).
+ * Alerts BC — `GET /alerts` Lambda handler.
  *
  * Lists alerts with optional status filter and pagination.
+ *
+ * The use case returns a flat `AlertReadModel[]` composed via
+ * `composeAlert(alert, product)` (see `application/compose-alert.ts`).
+ * Items are spread directly into the response — the contract is the
+ * flat `Alert` schema in `packages/shared`, NOT a `{ alert, product }`
+ * wrapper.
  */
 
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
@@ -41,8 +47,8 @@ function parseQuery(qs: string | undefined): {
 
   if (params.has('page')) {
     const v = Number(params.get('page'));
-    if (!Number.isInteger(v) || v < 0) {
-      issues.push({ path: 'page', message: 'page must be a non-negative integer.' });
+    if (!Number.isInteger(v) || v < 1) {
+      issues.push({ path: 'page', message: 'page must be a positive integer.' });
     } else {
       out['page'] = v;
     }
@@ -75,17 +81,7 @@ export const handler = withRequestContext(
         statusCode: 200,
         headers: { 'Content-Type': 'application/json', 'X-Request-Id': ctx.requestId },
         body: JSON.stringify({
-          items: result.items.map(({ alert, product }) => ({
-            alert: {
-              id: alert.id,
-              productId: alert.productId,
-              status: alert.status,
-              type: alert.type,
-              resolvedAt: alert.resolvedAt?.toISOString() ?? null,
-              createdAt: alert.createdAt.toISOString(),
-            },
-            product,
-          })),
+          items: result.items,
           page: result.page,
           size: result.size,
           total: result.total,

@@ -16,10 +16,23 @@ function getOrCreateTabId(): string {
   return id;
 }
 
+// Canonical role casing is lowercase — see shared/src/primitives/role.ts
+// and the backend (which emits 'admin' in login responses and JWT claims).
 export interface AuthUser {
   id: string;
   username: string;
-  role: 'ADMIN';
+  role: 'admin';
+}
+
+/**
+ * Runtime guard for `AuthUser`. Used at every trust boundary (service
+ * responses, restored localStorage payloads) so a malformed session is
+ * rejected loudly instead of silently corrupting the store.
+ */
+export function isAuthUser(value: unknown): value is AuthUser {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return typeof v['id'] === 'string' && typeof v['username'] === 'string' && v['role'] === 'admin';
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -41,12 +54,22 @@ export const useAuthStore = defineStore('auth', () => {
 
     if (storedToken && storedUser && storedExpires) {
       if (new Date(storedExpires) > new Date()) {
-        token.value = storedToken;
-        user.value = JSON.parse(storedUser) as AuthUser;
-        expiresAt.value = storedExpires;
-        return true;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(storedUser);
+        } catch {
+          // Corrupt JSON — fall through to cleanup
+          parsed = null;
+        }
+        if (isAuthUser(parsed)) {
+          token.value = storedToken;
+          user.value = parsed;
+          expiresAt.value = storedExpires;
+          return true;
+        }
       }
-      // Expired — clear
+      // Expired or malformed payload — clear (self-heal legacy 'ADMIN'
+      // sessions from before the casing was canonicalised)
       localStorage.removeItem('mx_token');
       localStorage.removeItem('mx_user');
       localStorage.removeItem('mx_expires_at');

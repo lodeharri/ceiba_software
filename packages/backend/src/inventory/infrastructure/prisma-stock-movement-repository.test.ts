@@ -10,6 +10,7 @@ function createPrismaStub() {
     quantity: number;
     reason: string;
     userId: string;
+    stockAfter: number;
     createdAt: Date;
   }> = [];
 
@@ -22,6 +23,7 @@ function createPrismaStub() {
         quantity: number;
         reason: string;
         userId: string;
+        stockAfter: number;
         createdAt: Date;
       }>,
     ) {
@@ -78,10 +80,30 @@ describe('PrismaStockMovementRepository (inventory BC — infrastructure)', () =
         quantity: 10,
         reason: 'Reposición',
         userId: USER_ID,
+        stockAfter: 25,
         createdAt: new Date('2026-07-09T10:00:00Z'),
       });
 
       expect(prisma.stockMovement.create).toHaveBeenCalledOnce();
+    });
+
+    it('persists stockAfter at insert time (shared/movement.ts contract)', async () => {
+      const repo = new PrismaStockMovementRepository(prisma);
+      await repo.append({
+        id: 'a2a2a2a2-1111-4111-8111-111111111111',
+        productId: PRODUCT_ID,
+        type: 'SALIDA',
+        quantity: 5,
+        reason: 'Venta',
+        userId: USER_ID,
+        stockAfter: 7,
+        createdAt: new Date('2026-07-09T11:00:00Z'),
+      });
+
+      const createCall = prisma.stockMovement.create.mock.calls[0]![0] as {
+        data: { stockAfter: number };
+      };
+      expect(createCall.data.stockAfter).toBe(7);
     });
 
     it('does NOT expose update or delete methods (BR-6)', () => {
@@ -106,6 +128,7 @@ describe('PrismaStockMovementRepository (inventory BC — infrastructure)', () =
         quantity: 10,
         reason: 'First',
         userId: USER_ID,
+        stockAfter: 10,
         createdAt: earlier,
       });
       await repo.append({
@@ -115,6 +138,7 @@ describe('PrismaStockMovementRepository (inventory BC — infrastructure)', () =
         quantity: 3,
         reason: 'Second',
         userId: USER_ID,
+        stockAfter: 7,
         createdAt: later,
       });
 
@@ -123,7 +147,9 @@ describe('PrismaStockMovementRepository (inventory BC — infrastructure)', () =
       expect(result.items).toHaveLength(2);
       // Ordered by createdAt DESC: later first, earlier second
       expect(result.items[0]?.reason).toBe('Second');
+      expect(result.items[0]?.stockAfter).toBe(7);
       expect(result.items[1]?.reason).toBe('First');
+      expect(result.items[1]?.stockAfter).toBe(10);
       expect(result.total).toBe(2);
     });
 
@@ -140,6 +166,7 @@ describe('PrismaStockMovementRepository (inventory BC — infrastructure)', () =
           quantity: i,
           reason: `Movement ${i}`,
           userId: USER_ID,
+          stockAfter: i * 10,
           createdAt: new Date(base.getTime() + i * 60000),
         });
       }
@@ -185,6 +212,7 @@ describe('PrismaStockMovementRepository (inventory BC — infrastructure)', () =
           quantity: i,
           reason: `Item ${i}`,
           userId: USER_ID,
+          stockAfter: i * 10,
           createdAt: new Date(base.getTime() + i * 60000),
         });
       }

@@ -2,9 +2,11 @@
  * Products BC — AlertReadModelPort (KL-13, products/spec.md "List with
  * filters" — cross-BC seam to the alerts BC).
  *
- * Read-only port that resolves the `hasActiveAlert=true` filter on
- * `GET /api/v1/products` without making the products BC depend on the
- * alerts BC's domain or application layers (RISK-W06).
+ * Read-only port that resolves the `hasActiveAlert` filter on
+ * `GET /api/v1/products` and the per-product `hasActiveAlert` flag
+ * on the `Product` read model (products/spec.md "Read model") without
+ * making the products BC depend on the alerts BC's domain or
+ * application layers (RISK-W06).
  *
  * The concrete adapter lives in `products/infrastructure/` and queries
  * the `alerts` table directly via Prisma — there is NO Prisma relation
@@ -19,4 +21,12 @@ export interface AlertReadModelPort {
    * deduplicated server-side.
    */
   findProductIdsWithActiveAlert(): Promise<readonly string[]>;
+
+  /**
+   * Returns `true` iff the given product currently has at least one
+   * active (`status = 'ACTIVA'`) alert. Used by `GetProductUseCase`
+   * and `UpdateProductUseCase` to populate the read-model flag for
+   * single-product responses.
+   */
+  hasActiveAlert(productId: string): Promise<boolean>;
 }

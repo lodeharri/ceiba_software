@@ -6,7 +6,7 @@
  * No create/update/delete methods.
  */
 
-import type { AlertRepository } from '../domain/ports/alert-repository.js';
+import type { AlertRepository, ListAlertsOptions, Page } from '../domain/ports/alert-repository.js';
 import type { AlertProps } from '../domain/alert.js';
 
 interface AlertRow {
@@ -40,22 +40,26 @@ export class PrismaAlertRepository implements AlertRepository {
     return row ? toProps(row) : null;
   }
 
-  async list(args: {
-    status?: 'ACTIVA' | 'RESUELTA';
-    page: number;
-    size: number;
-  }): Promise<{ items: AlertProps[]; total: number }> {
+  async list(args: ListAlertsOptions): Promise<Page<AlertProps>> {
+    const page = args.page;
+    const size = args.size;
     const where = args.status ? { status: args.status } : {};
     const [rows, total] = await Promise.all([
       this.prisma.alert.findMany({
         where,
         orderBy: { createdAt: 'desc' },
-        skip: args.page * args.size,
-        take: args.size,
+        skip: (page - 1) * size,
+        take: size,
       }),
       this.prisma.alert.count({ where }),
     ]);
-    return { items: rows.map(toProps), total };
+    return {
+      items: rows.map(toProps),
+      page,
+      size,
+      total,
+      hasMore: page * size < total,
+    };
   }
 
   async count(args: { status?: 'ACTIVA' | 'RESUELTA' }): Promise<number> {

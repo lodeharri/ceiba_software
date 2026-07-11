@@ -16,11 +16,14 @@ vi.mock('./http', () => ({
   http: vi.fn(),
 }));
 
-import { login } from './auth';
+import { login, InvalidLoginResponseError } from './auth';
 import { http } from './http';
 import { useAuthStore } from '@/stores/auth';
 
 const mockedHttp = vi.mocked(http);
+
+const VALID_USER_ID = '11111111-1111-4111-8111-111111111111';
+const VALID_EXPIRES_AT = '2099-01-01T00:00:00.000Z';
 
 describe('auth service', () => {
   beforeEach(() => {
@@ -33,8 +36,8 @@ describe('auth service', () => {
   it('login() POSTs credentials to /auth/login', async () => {
     mockedHttp.mockResolvedValue({
       token: 'jwt-token-xyz',
-      expiresAt: '2099-01-01T00:00:00.000Z',
-      user: { id: 'u-1', username: 'admin', role: 'ADMIN' },
+      expiresAt: VALID_EXPIRES_AT,
+      user: { id: VALID_USER_ID, username: 'admin', role: 'admin' },
     });
 
     await login({ username: 'admin', password: 'secret' });
@@ -49,8 +52,8 @@ describe('auth service', () => {
   it('a successful login persists the token in the auth store', async () => {
     const response = {
       token: 'jwt-token-xyz',
-      expiresAt: '2099-01-01T00:00:00.000Z',
-      user: { id: 'u-1', username: 'admin', role: 'ADMIN' as const },
+      expiresAt: VALID_EXPIRES_AT,
+      user: { id: VALID_USER_ID, username: 'admin', role: 'admin' as const },
     };
     mockedHttp.mockResolvedValue(response);
 
@@ -65,12 +68,52 @@ describe('auth service', () => {
     expect(store.isAuthenticated).toBe(true);
   });
 
+  it('returns the parsed login response with canonical lowercase role', async () => {
+    mockedHttp.mockResolvedValue({
+      token: 'jwt-token-xyz',
+      expiresAt: VALID_EXPIRES_AT,
+      user: { id: VALID_USER_ID, username: 'admin', role: 'admin' },
+    });
+
+    const result = await login({ username: 'admin', password: 'secret' });
+
+    expect(result.user.role).toBe('admin');
+  });
+
+  it('throws InvalidLoginResponseError and logs out when the response casing drifts', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const store = useAuthStore();
+    // Simulate a stale session in the store that must be cleared.
+    store.login({
+      token: 'stale-jwt',
+      expiresAt: VALID_EXPIRES_AT,
+      user: { id: VALID_USER_ID, username: 'admin', role: 'admin' },
+    });
+    expect(store.token).toBe('stale-jwt');
+
+    // Backend drifted back to uppercase — Zod must reject this.
+    mockedHttp.mockResolvedValue({
+      token: 'jwt-token-xyz',
+      expiresAt: VALID_EXPIRES_AT,
+      user: { id: VALID_USER_ID, username: 'admin', role: 'ADMIN' },
+    });
+
+    await expect(login({ username: 'admin', password: 'secret' })).rejects.toBeInstanceOf(
+      InvalidLoginResponseError,
+    );
+
+    expect(store.token).toBeNull();
+    expect(store.user).toBeNull();
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
   it('logout() clears the token from the auth store', async () => {
     const store = useAuthStore();
     store.login({
       token: 'jwt-token-xyz',
-      expiresAt: '2099-01-01T00:00:00.000Z',
-      user: { id: 'u-1', username: 'admin', role: 'ADMIN' },
+      expiresAt: VALID_EXPIRES_AT,
+      user: { id: VALID_USER_ID, username: 'admin', role: 'admin' },
     });
     expect(store.token).toBe('jwt-token-xyz');
 

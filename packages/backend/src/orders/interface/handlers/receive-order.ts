@@ -78,11 +78,9 @@ export const handler = withRequestContext(
         statusCode: 200,
         headers: { 'Content-Type': 'application/json', 'X-Request-Id': ctx.requestId },
         body: JSON.stringify({
-          orderId: result.orderId,
-          status: result.status,
+          ...result.order,
           stockAfter: result.stockAfter,
           closedAlertId: result.closedAlertId,
-          receivedAt: result.receivedAt,
           requestId: ctx.requestId,
         }),
       };

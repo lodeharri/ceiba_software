@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
-import { useAuthStore } from './auth';
+import { isAuthUser, useAuthStore } from './auth';
 
 describe('useAuthStore', () => {
   beforeEach(() => {
@@ -31,7 +31,7 @@ describe('useAuthStore', () => {
     const session = {
       token: 'jwt-token-123',
       expiresAt: '2099-01-01T00:00:00.000Z',
-      user: { id: 'u-1', username: 'admin', role: 'ADMIN' as const },
+      user: { id: 'u-1', username: 'admin', role: 'admin' as const },
     };
 
     store.login(session);
@@ -47,7 +47,7 @@ describe('useAuthStore', () => {
     store.login({
       token: 'jwt-token-123',
       expiresAt: '2099-01-01T00:00:00.000Z',
-      user: { id: 'u-1', username: 'admin', role: 'ADMIN' as const },
+      user: { id: 'u-1', username: 'admin', role: 'admin' as const },
     });
 
     store.logout();
@@ -56,5 +56,41 @@ describe('useAuthStore', () => {
     expect(store.user).toBeNull();
     expect(store.expiresAt).toBeNull();
     expect(store.isAuthenticated).toBe(false);
+  });
+
+  describe('isAuthUser guard', () => {
+    it('accepts a canonical lowercase-role payload', () => {
+      expect(isAuthUser({ id: 'u-1', username: 'admin', role: 'admin' })).toBe(true);
+    });
+
+    it('rejects uppercase role (the legacy/wrong casing)', () => {
+      expect(isAuthUser({ id: 'u-1', username: 'admin', role: 'ADMIN' })).toBe(false);
+    });
+
+    it('rejects non-objects and missing fields', () => {
+      expect(isAuthUser(null)).toBe(false);
+      expect(isAuthUser(undefined)).toBe(false);
+      expect(isAuthUser('string')).toBe(false);
+      expect(isAuthUser({ id: 'u-1' })).toBe(false);
+      expect(isAuthUser({ id: 'u-1', username: 'admin' })).toBe(false);
+    });
+  });
+
+  describe('restore()', () => {
+    it('clears a stale legacy session whose role casing is uppercase', () => {
+      localStorage.setItem('mx_token', 'legacy-jwt');
+      localStorage.setItem(
+        'mx_user',
+        JSON.stringify({ id: 'u-1', username: 'admin', role: 'ADMIN' }),
+      );
+      localStorage.setItem('mx_expires_at', '2099-01-01T00:00:00.000Z');
+
+      const store = useAuthStore();
+      const restored = store.restore();
+
+      expect(restored).toBe(false);
+      expect(store.token).toBeNull();
+      expect(localStorage.getItem('mx_token')).toBeNull();
+    });
   });
 });

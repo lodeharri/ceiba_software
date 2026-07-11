@@ -63,6 +63,9 @@ function makeAlertReadModel(activeProductIds: readonly string[]): AlertReadModel
     async findProductIdsWithActiveAlert() {
       return activeProductIds;
     },
+    async hasActiveAlert(productId: string) {
+      return activeProductIds.includes(productId);
+    },
   };
 }
 
@@ -172,25 +175,65 @@ describe('ListProductsUseCase', () => {
     expect(result.items.map((p) => p.id)).toEqual(['00000000-0000-4000-8000-000000000b01']);
   });
 
-  it('hasActiveAlert=undefined does NOT call the alert port (backward compat)', async () => {
-    const portSpy = vi.fn(async () => []);
+  it('hasActiveAlert=undefined still queries the alert port for per-product enrichment', async () => {
+    // The wire contract requires `hasActiveAlert` on every item, so the
+    // use case ALWAYS calls `findProductIdsWithActiveAlert` once and
+    // reuses the result for per-item flag setting. The filter stays a
+    // no-op when undefined (backward-compat for the filter itself).
+    const portSpy = vi.fn(async () => ['00000000-0000-4000-8000-000000000a02']);
     const captured: { lastListOptions?: ListOptions } = {};
     const useCase = new ListProductsUseCase(makeProducts(ROWS, captured), {
       findProductIdsWithActiveAlert: portSpy,
+      async hasActiveAlert(productId: string) {
+        return productId === '00000000-0000-4000-8000-000000000a02';
+      },
     });
     const result = await useCase.execute({ filters: {} });
-    expect(portSpy).not.toHaveBeenCalled();
+    expect(portSpy).toHaveBeenCalledTimes(1);
+    expect(captured.lastListOptions?.productIds).toBeUndefined();
+    expect(result.items.length).toBe(3);
+    // Per-item enrichment
+    expect(result.items[0]!.toReadModel().hasActiveAlert).toBe(false);
+    expect(result.items[1]!.toReadModel().hasActiveAlert).toBe(true);
+    expect(result.items[2]!.toReadModel().hasActiveAlert).toBe(false);
+  });
+
+  it('hasActiveAlert=false queries the port for enrichment but does NOT narrow the list', async () => {
+    const portSpy = vi.fn(async () => ['00000000-0000-4000-8000-000000000a02']);
+    const captured: { lastListOptions?: ListOptions } = {};
+    const useCase = new ListProductsUseCase(makeProducts(ROWS, captured), {
+      findProductIdsWithActiveAlert: portSpy,
+      async hasActiveAlert(productId: string) {
+        return productId === '00000000-0000-4000-8000-000000000a02';
+      },
+    });
+    const result = await useCase.execute({ filters: { hasActiveAlert: false } });
+    expect(portSpy).toHaveBeenCalledTimes(1);
     expect(captured.lastListOptions?.productIds).toBeUndefined();
     expect(result.items.length).toBe(3);
   });
 
-  it('hasActiveAlert=false does NOT call the alert port (backward compat per spec)', async () => {
-    const portSpy = vi.fn(async () => []);
-    const useCase = new ListProductsUseCase(makeProducts(ROWS), {
-      findProductIdsWithActiveAlert: portSpy,
-    });
-    const result = await useCase.execute({ filters: { hasActiveAlert: false } });
-    expect(portSpy).not.toHaveBeenCalled();
-    expect(result.items.length).toBe(3);
+  it('emits price as a string in the read model (Money wire format D4)', async () => {
+    const useCase = new ListProductsUseCase(makeProducts(rows), makeAlertReadModel([]));
+    const result = await useCase.execute();
+    for (const p of result.items) {
+      const read = p.toReadModel();
+      expect(typeof read.price).toBe('string');
+      expect(read.price).toMatch(/^\d+$/);
+    }
+  });
+
+  it('emits hasActiveAlert on every item regardless of filter', async () => {
+    const useCase = new ListProductsUseCase(
+      makeProducts(rows),
+      makeAlertReadModel([
+        '00000000-0000-4000-8000-000000000000',
+        '00000000-0000-4000-8000-000000000003',
+      ]),
+    );
+    const result = await useCase.execute();
+    for (const p of result.items) {
+      expect(typeof p.toReadModel().hasActiveAlert).toBe('boolean');
+    }
   });
 });

@@ -27,6 +27,12 @@ export interface StockMovementProps {
   quantity: number;
   reason: string;
   userId: string;
+  /**
+   * Product stock immediately after this movement was applied.
+   * Denormalized at insert time per shared/movement.ts — invariant
+   * `stockAfter >= 0`.
+   */
+  stockAfter: number;
   createdAt: Date;
 }
 
@@ -40,6 +46,7 @@ export class StockMovement {
     quantity: number;
     reason: string;
     userId: string;
+    stockAfter: number;
     createdAt?: Date;
   }): StockMovement {
     StockMovement.assertInvariants({
@@ -49,6 +56,7 @@ export class StockMovement {
       quantity: input.quantity,
       reason: input.reason,
       userId: input.userId,
+      stockAfter: input.stockAfter,
       createdAt: input.createdAt ?? new Date(),
     });
     return new StockMovement({
@@ -58,6 +66,7 @@ export class StockMovement {
       quantity: input.quantity,
       reason: input.reason,
       userId: input.userId,
+      stockAfter: input.stockAfter,
       createdAt: input.createdAt ?? new Date(),
     });
   }
@@ -84,6 +93,11 @@ export class StockMovement {
     }
     if (!props.userId || !UUID_V4_REGEX.test(props.userId)) {
       throw new Error('StockMovement.userId must be a valid UUID');
+    }
+    if (!Number.isInteger(props.stockAfter) || props.stockAfter < 0) {
+      throw new Error(
+        `StockMovement.stockAfter must be a non-negative integer, got ${props.stockAfter}`,
+      );
     }
   }
 
@@ -113,6 +127,9 @@ export class StockMovement {
   }
   get userId(): string {
     return this.props.userId;
+  }
+  get stockAfter(): number {
+    return this.props.stockAfter;
   }
   get createdAt(): Date {
     return this.props.createdAt;

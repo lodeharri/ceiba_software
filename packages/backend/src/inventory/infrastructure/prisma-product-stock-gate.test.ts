@@ -69,10 +69,14 @@ describe('PrismaProductStockGate (inventory BC — infrastructure)', () => {
 
     expect(tx._getMovementCreateMock()).toHaveBeenCalledOnce();
     const createCall = tx._getMovementCreateMock().mock.calls[0]![0] as {
-      data: { productId: string; quantity: number };
+      data: { productId: string; quantity: number; stockAfter: number };
     };
     expect(createCall.data.productId).toBe(PRODUCT_ID);
     expect(createCall.data.quantity).toBe(2);
+    // `stockAfter` must be denormalized at insert time so list views
+    // (orders BC receive flow goes through this gate) do not need to
+    // walk the ledger.
+    expect(createCall.data.stockAfter).toBe(3);
 
     expect(tx._getProductUpdateMock()).toHaveBeenCalledOnce();
     const updateCall = tx._getProductUpdateMock().mock.calls[0]![0] as {

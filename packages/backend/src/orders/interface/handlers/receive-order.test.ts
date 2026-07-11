@@ -8,11 +8,23 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('./bootstrap.js', () => {
   const executeMock = vi.fn().mockResolvedValue({
-    orderId: '11111111-1111-1111-1111-111111111111',
-    status: 'RECIBIDA',
+    order: {
+      id: '11111111-1111-1111-1111-111111111111',
+      productId: '22222222-2222-2222-2222-222222222222',
+      productName: 'Cerveza',
+      productSku: 'SKU-001',
+      quantity: 60,
+      supplierSnapshot: 'SnacksCorp',
+      fromAlertId: null,
+      status: 'RECIBIDA',
+      rejectionReason: null,
+      createdBy: '33333333-3333-3333-3333-333333333333',
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-01T00:00:00.000Z',
+      receivedAt: '2025-01-01T00:00:00.000Z',
+    },
     stockAfter: 80,
     closedAlertId: 'alert-1',
-    receivedAt: '2025-01-01T00:00:00.000Z',
   });
   return {
     getOrdersBootstrap: vi.fn(() => ({
@@ -25,7 +37,7 @@ const { handler } = await import('./receive-order.js');
 const CTX = { requestId: 'r-123', logger: { info: vi.fn(), error: vi.fn() } } as unknown;
 
 describe('POST /api/v1/orders/{id}/receive handler', () => {
-  it('returns 200 on happy receive', async () => {
+  it('returns 200 on happy receive with composed order + stockAfter + closedAlertId', async () => {
     const O = '11111111-1111-1111-1111-111111111111';
     // Build a valid JWT: header.payload.sig
     const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
@@ -50,6 +62,13 @@ describe('POST /api/v1/orders/{id}/receive handler', () => {
       ) => Promise<{ statusCode: number; body?: string }>
     )(event, CTX);
     expect(result.statusCode).toBe(200);
+    const body = JSON.parse(result.body!);
+    expect(body.id).toBe(O);
+    expect(body.status).toBe('RECIBIDA');
+    expect(body.productName).toBe('Cerveza');
+    expect(body.productSku).toBe('SKU-001');
+    expect(body.stockAfter).toBe(80);
+    expect(body.closedAlertId).toBe('alert-1');
   });
 });
 

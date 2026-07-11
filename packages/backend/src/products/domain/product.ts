@@ -9,7 +9,17 @@
  *   - stockMin   > 0
  *   - supplier   1-120 chars, non-empty
  *   - categoryId UUID
+ *
+ * Wire format (read model) — matches `packages/shared/src/schemas/products/product.ts`:
+ *   - price          integer COP serialized as a string ("1234", never 1234)
+ *                    per design.md D4 (avoid Number precision loss in JS JSON)
+ *   - hasActiveAlert boolean denormalized from the alerts BC; the entity
+ *                    does not own it — callers set it via `withAlertFlag`
+ *                    so the read model can carry the flag without polluting
+ *                    domain invariants.
  */
+
+import { MoneySerializer } from '@mercadoexpress/shared';
 
 const SKU_REGEX = /^[A-Za-z0-9-]{6,20}$/;
 const UUID_V4_REGEX =
@@ -29,7 +39,10 @@ export interface ProductProps {
 }
 
 export class Product {
-  private constructor(public readonly props: ProductProps) {}
+  private constructor(
+    public readonly props: ProductProps,
+    private readonly alertFlag: boolean = false,
+  ) {}
 
   static create(input: {
     id: string;
@@ -53,6 +66,16 @@ export class Product {
 
   static rehydrate(props: ProductProps): Product {
     return new Product({ ...props, sku: props.sku.toUpperCase(), name: props.name.trim() });
+  }
+
+  /**
+   * Returns a NEW Product instance carrying the given `hasActiveAlert`
+   * value. Use cases call this after consulting `AlertReadModelPort`
+   * so the read model can emit the field without leaking alert
+   * concerns into the domain invariants.
+   */
+  withAlertFlag(flag: boolean): Product {
+    return new Product(this.props, flag);
   }
 
   static assertInvariants(p: ProductProps): void {
@@ -115,11 +138,12 @@ export class Product {
     id: string;
     sku: string;
     name: string;
-    price: number;
+    price: string;
     stock: number;
     stockMin: number;
     supplier: string;
     categoryId: string;
+    hasActiveAlert: boolean;
     createdAt: string;
     updatedAt: string;
   } {
@@ -127,11 +151,18 @@ export class Product {
       id: this.props.id,
       sku: this.props.sku,
       name: this.props.name,
-      price: this.props.price,
+      // D4 / `packages/shared/src/primitives/money.ts`: Money on the wire
+      // is an integer-COP string. Number values lose precision above 2^53
+      // and JSON.stringify emits scientific notation for very large numbers.
+      price: MoneySerializer.toIntegerCOP(this.props.price),
       stock: this.props.stock,
       stockMin: this.props.stockMin,
       supplier: this.props.supplier,
       categoryId: this.props.categoryId,
+      // Denormalized by the use case via `AlertReadModelPort`; defaults to
+      // `false` for aggregates produced by `Product.create` /
+      // `Product.rehydrate` without an explicit `withAlertFlag(...)` call.
+      hasActiveAlert: this.alertFlag,
       createdAt: (this.props.createdAt ?? new Date(0)).toISOString(),
       updatedAt: (this.props.updatedAt ?? new Date(0)).toISOString(),
     };

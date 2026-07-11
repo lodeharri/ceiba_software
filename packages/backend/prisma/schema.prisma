@@ -41,9 +41,26 @@ updatedAt       DateTime   @default(now()) @map("updated_at") @db.Timestamptz(6)
 
 generator client {
   provider = "prisma-client-js"
-  // pnpm does not link .prisma output to node_modules by default; explicit
-  // output path ensures @prisma/client/default.js can resolve .prisma/client/default.
-  output   = "../node_modules/.prisma/client"
+  // pnpm hoists @prisma/client into the store and symlinks it from each
+  // workspace. The @prisma/client entrypoint does `require('.prisma/client/default')`
+  // — note the missing `./` — which Node interprets as a MODULE NAME
+  // lookup, not a relative path. Node walks up node_modules and finds
+  // the FIRST `.prisma/client/` on the way, which is the OLD client that
+  // Prisma's own postinstall created when @prisma/client was first
+  // installed (sitting at `node_modules/.pnpm/.../node_modules/.prisma/client/`,
+  // one level up from `@prisma/client/`).
+  //
+  // Therefore the regenerated client MUST land at that exact sibling
+  // location so it shadows the stale one. Writing it anywhere else
+  // (e.g. inside `@prisma/client/.prisma/client/`, or the workspace-local
+  // `packages/backend/node_modules/.prisma/client/`) has no effect —
+  // Node never looks there.
+  //
+  // The hash @prisma+client@5.22.0_prisma@5.22.0 encodes the @prisma/client
+  // version (5.22.0) and its `prisma` peerDep version (5.22.0). It changes
+  // only when either version is bumped; `pnpm install` after such a bump
+  // will fail loudly if this path goes stale.
+  output = "../../../node_modules/.pnpm/@prisma+client@5.22.0_prisma@5.22.0/node_modules/.prisma/client"
 }
 
 datasource db {
@@ -142,13 +159,16 @@ model IdempotencyKey {
 // ────────────────────────────────────────────────────────────────
 
 model StockMovement {
-  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  productId String       @map("product_id") @db.Uuid
-  type      MovementType
-  quantity  Int
-  reason    String       @db.VarChar(280)
-  userId    String       @map("user_id") @db.Uuid
-  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productId  String       @map("product_id") @db.Uuid
+  type       MovementType
+  quantity   Int
+  reason     String       @db.VarChar(280)
+  userId     String       @map("user_id") @db.Uuid
+  // `stockAfter` is denormalized at insert time per shared/movement.ts
+  // (no need to walk the ledger on list views).
+  stockAfter Int          @map("stock_after")
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
 
   // No Prisma relation to Product — the productId is a value reference (D1).
   // Cross-BC FKs are forbidden per inventory/spec.md.

@@ -56,19 +56,24 @@ describe('GetAlert (alerts BC — application)', () => {
     useCase = new GetAlert(stubs.alertRepo, stubs.productRead);
   });
 
-  it('returns alert with product snapshot for ACTIVA alert', async () => {
+  it('returns flat ACTIVA alert with composed product snapshot', async () => {
     stubs.findByIdMock.mockResolvedValue(makeAlert());
     stubs.findProductMock.mockResolvedValue(makeProduct());
 
     const result = await useCase.execute({ id: ALERT_ID });
 
+    // Flat read model: id, productName, productSku, stockAtOpen, stockMin
+    // all live on `result.alert` (not under nested `alert`/`product` keys).
     expect(result.alert.id).toBe(ALERT_ID);
     expect(result.alert.status).toBe('ACTIVA');
-    expect(result.alert.resolvedAt).toBeUndefined();
-    expect(result.product.name).toBe('Test Product');
+    expect(result.alert.resolvedAt).toBeNull();
+    expect(result.alert.productName).toBe('Test Product');
+    expect(result.alert.productSku).toBe('SKU123');
+    expect(result.alert.stockAtOpen).toBe(5);
+    expect(result.alert.stockMin).toBe(10);
   });
 
-  it('returns alert with resolvedAt for RESUELTA alert', async () => {
+  it('returns flat RESUELTA alert with resolvedAt serialized as ISO string', async () => {
     const resolvedAt = new Date('2025-01-16T12:00:00Z');
     stubs.findByIdMock.mockResolvedValue(makeAlert({ status: 'RESUELTA', resolvedAt }));
     stubs.findProductMock.mockResolvedValue(makeProduct());
@@ -76,7 +81,7 @@ describe('GetAlert (alerts BC — application)', () => {
     const result = await useCase.execute({ id: ALERT_ID });
 
     expect(result.alert.status).toBe('RESUELTA');
-    expect(result.alert.resolvedAt).toEqual(resolvedAt);
+    expect(result.alert.resolvedAt).toBe('2025-01-16T12:00:00.000Z');
   });
 
   it('throws AlertNotFoundError for unknown id', async () => {
@@ -85,5 +90,15 @@ describe('GetAlert (alerts BC — application)', () => {
     await expect(useCase.execute({ id: '00000000-0000-4000-8000-000000000000' })).rejects.toThrow(
       /not found/i,
     );
+  });
+
+  it('throws AlertProductInconsistencyError when the referenced product is gone', async () => {
+    stubs.findByIdMock.mockResolvedValue(makeAlert());
+    stubs.findProductMock.mockResolvedValue(null);
+
+    await expect(useCase.execute({ id: ALERT_ID })).rejects.toMatchObject({
+      code: 'INTERNAL_ERROR',
+      httpStatus: 422,
+    });
   });
 });

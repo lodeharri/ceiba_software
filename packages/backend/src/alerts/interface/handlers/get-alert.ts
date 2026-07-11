@@ -1,8 +1,11 @@
 /**
- * Alerts BC — `GET /alerts/{id}` Lambda handler (PR 2b).
+ * Alerts BC — `GET /alerts/{id}` Lambda handler.
  *
- * Extracts id from path params, calls GetAlert use case, returns
- * the alert with product snapshot.
+ * Extracts id from path params, calls GetAlert use case, returns the
+ * flat `Alert` read model composed via `composeAlert(alert, product)`
+ * (see `application/compose-alert.ts`). The contract is the flat
+ * `Alert` schema in `packages/shared`, NOT a `{ alert, product }`
+ * wrapper.
  */
 
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
@@ -39,15 +42,7 @@ export const handler = withRequestContext(
         statusCode: 200,
         headers: { 'Content-Type': 'application/json', 'X-Request-Id': ctx.requestId },
         body: JSON.stringify({
-          alert: {
-            id: result.alert.id,
-            productId: result.alert.productId,
-            status: result.alert.status,
-            type: result.alert.type,
-            resolvedAt: result.alert.resolvedAt?.toISOString() ?? null,
-            createdAt: result.alert.createdAt.toISOString(),
-          },
-          product: result.product,
+          alert: result.alert,
         }),
       };
     } catch (err) {

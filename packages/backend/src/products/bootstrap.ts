@@ -51,8 +51,8 @@ export function bootstrapProducts(prismaOverride?: PrismaLike): ProductsBootstra
     logger: createLogger().child({ bc: 'products' }),
     createProduct: new CreateProductUseCase(productRepo, categoryRead),
     listProducts: new ListProductsUseCase(productRepo, alertReadModel),
-    getProduct: new GetProductUseCase(productRepo),
-    updateProduct: new UpdateProductUseCase(productRepo, categoryRead),
+    getProduct: new GetProductUseCase(productRepo, alertReadModel),
+    updateProduct: new UpdateProductUseCase(productRepo, categoryRead, alertReadModel),
     categoryReadRepository: categoryRead,
   };
   g.__mercadoExpressProducts = bootstrap;

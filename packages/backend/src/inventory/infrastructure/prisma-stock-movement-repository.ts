@@ -16,6 +16,7 @@ interface MovementRow {
   quantity: number;
   reason: string;
   userId: string;
+  stockAfter: number;
   createdAt: Date;
 }
 
@@ -45,6 +46,7 @@ export class PrismaStockMovementRepository implements StockMovementRepository {
         quantity: movement.quantity,
         reason: movement.reason,
         userId: movement.userId,
+        stockAfter: movement.stockAfter,
         createdAt: movement.createdAt,
       },
     });
@@ -89,6 +91,7 @@ function toProps(row: MovementRow): StockMovementProps {
     quantity: row.quantity,
     reason: row.reason,
     userId: row.userId,
+    stockAfter: row.stockAfter,
     createdAt: row.createdAt,
   };
 }

@@ -221,6 +221,30 @@ import {
 } from './events/apigw-v2-builder.js';
 export { toApiGatewayProxyEventV2, headersToRecord, parseCookies, type ApiGatewayProxyEventArgs };
 
+export function pathToRegex(routeKey: string): RegExp {
+  // Substitute `{name}` placeholders with a sentinel, escape every other
+  // regex metachar in the literal segments, then swap the sentinel back
+  // for `[^/]+`. Mirrors API Gateway path-parameter expansion so the
+  // dev-server matches `/api/v1/products/<uuid>/movements` against the
+  // registered route `GET /api/v1/products/{id}/movements`.
+  const sentinel = '\x00PLACEHOLDER\x00';
+  const parts: string[] = [];
+  let lastIndex = 0;
+  const placeholderRe = /\{[^}]+\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = placeholderRe.exec(routeKey)) !== null) {
+    parts.push(routeKey.slice(lastIndex, match.index));
+    parts.push(sentinel);
+    lastIndex = match.index + match[0].length;
+  }
+  parts.push(routeKey.slice(lastIndex));
+  const escaped = parts
+    .map((p) => (p === sentinel ? sentinel : p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+    .join('');
+  const pattern = escaped.split(sentinel).join('[^/]+');
+  return new RegExp(`^${pattern}$`);
+}
+
 export function matchRoute(
   lambdas: ReadonlyArray<LambdaSpecForDev>,
   method: string,
@@ -232,6 +256,11 @@ export function matchRoute(
   const target = `${method} ${fullPath}`;
   for (const lambda of lambdas) {
     if (lambda.routeKey === target) return lambda;
+    const spaceIdx = lambda.routeKey.indexOf(' ');
+    const lambdaMethod = spaceIdx > 0 ? lambda.routeKey.slice(0, spaceIdx) : '';
+    if (lambdaMethod === method && pathToRegex(lambda.routeKey).test(target)) {
+      return lambda;
+    }
   }
   return null;
 }
@@ -263,6 +292,13 @@ export function writeResponse(res: ServerResponse, result: DevResult): void {
   }
   if (!res.getHeader('content-type')) {
     res.setHeader('Content-Type', 'application/json');
+  }
+  // CORS: attach Access-Control-Allow-Origin to the ACTUAL response too
+  // (not only the preflight). The browser blocks the response body from JS
+  // if this header is missing — even when preflight succeeded. Mirror the
+  // dev policy here; production wires CORS via APIGW v2 corsPreflight.
+  if (!res.getHeader('access-control-allow-origin')) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
   }
   if (Array.isArray(result.cookies) && result.cookies.length > 0) {
     // Node's `res.setHeader` replaces the existing value; for multiple
@@ -431,18 +467,24 @@ function startRequest(context: RequestContext, req: IncomingMessage, res: Server
       return;
     }
     const cookies = parseCookies(req.headers.cookie);
+    const lambda = matchRoute(context.lambdas, method, fullPath);
+    // Use the REGISTERED routeKey (e.g. "GET /api/v1/products/{id}/movements")
+    // when the path has placeholder segments, so the BC dispatchers' ROUTES
+    // tables (which key on the template, not the substituted path) match.
+    // For paths without placeholders, lambda.routeKey === `${method} ${fullPath}`.
+    const routeKey = lambda ? lambda.routeKey : `${method} ${fullPath}`;
     const event = toApiGatewayProxyEventV2({
       req,
       method,
       rawPath: pathAfterPrefix,
       // PR 4: routeKey must include `/api/v1` so the BC dispatchers'
       // ROUTES tables (which key on the prefix) can match.
+      routeKey,
       fullPath,
       rawQueryString,
       ...(body !== undefined ? { body } : {}),
       cookies,
     });
-    const lambda = matchRoute(context.lambdas, method, fullPath);
     if (!lambda) {
       const envelope = toErrorEnvelope(
         'ROUTE_NOT_REGISTERED',

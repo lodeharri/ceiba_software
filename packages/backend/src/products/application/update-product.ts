@@ -4,6 +4,10 @@
  * The patch accepts only `{ name, supplier, price, stockMin, categoryId }`.
  * Any attempt to PATCH `sku`, `stock`, or `id` is rejected at the
  * repository boundary (adapter enforces — RISK-S02 PATCH-with-same-body).
+ *
+ * The response carries `hasActiveAlert` (cross-BC flag, KL-13). PATCH
+ * itself does not create or resolve alerts (alerts/spec.md), so the
+ * post-update flag equals the pre-update flag.
  */
 
 import { Product } from '../domain/product.js';
@@ -11,6 +15,7 @@ import { CategoryNotFoundError } from '../domain/errors/category-not-found.js';
 import { ProductNotFoundError } from '../domain/errors/product-not-found.js';
 import type { ProductRepository } from '../domain/ports/product-repository.js';
 import type { CategoryReadRepository } from '../domain/ports/category-repository.js';
+import type { AlertReadModelPort } from '../domain/ports/alert-read-model-port.js';
 
 export interface UpdateProductInput {
   name?: string;
@@ -24,6 +29,7 @@ export class UpdateProductUseCase {
   constructor(
     private readonly products: ProductRepository,
     private readonly categories: CategoryReadRepository,
+    private readonly alertReadModel: AlertReadModelPort,
   ) {}
 
   async execute(id: string, input: UpdateProductInput): Promise<Product> {
@@ -36,6 +42,8 @@ export class UpdateProductUseCase {
       if (!c) throw new CategoryNotFoundError(input.categoryId);
     }
     const updated = await this.products.update(id, input);
-    return Product.rehydrate(updated);
+    const product = Product.rehydrate(updated);
+    const hasActiveAlert = await this.alertReadModel.hasActiveAlert(id);
+    return product.withAlertFlag(hasActiveAlert);
   }
 }

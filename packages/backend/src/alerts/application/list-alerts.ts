@@ -1,15 +1,25 @@
 /**
- * Alerts BC — ListAlerts use case (PR 2b, alerts/spec.md).
+ * Alerts BC — ListAlerts use case.
  *
  * Lists alerts with optional status filter and pagination.
- * Enriches each alert with a product snapshot via ProductReadPort.
+ *
+ * Each row is composed via `composeAlert(alert, product)` so the response
+ * matches the canonical flat `Alert` read model in `packages/shared` —
+ * `productName` / `productSku` / `stockAtOpen` / `stockMin` are required
+ * by the schema, never undefined.
+ *
+ * Alerts whose product has been deleted since the alert opened are
+ * silently dropped (the partial unique constraints in the schema make
+ * this race narrow; surfacing a 422 for every dropped row in a list
+ * would be hostile UX). This mirrors the orders BC `ListOrdersUseCase`
+ * pattern.
  */
 
 import { ErrorCode } from '@mercadoexpress/shared';
 import { BaseDomainError } from '../../shared/errors/base-domain-error.js';
 import type { AlertRepository } from '../domain/ports/alert-repository.js';
-import type { ProductReadPort, ProductSnapshot } from '../domain/ports/product-read-port.js';
-import type { AlertProps } from '../domain/alert.js';
+import type { ProductReadPort } from '../domain/ports/product-read-port.js';
+import { composeAlert, type AlertReadModel } from './compose-alert.js';
 
 const VALID_STATUSES = ['ACTIVA', 'RESUELTA', 'BOTH'] as const;
 type InputStatus = (typeof VALID_STATUSES)[number];
@@ -20,13 +30,8 @@ export interface ListAlertsInput {
   size?: number;
 }
 
-export interface AlertWithProduct {
-  alert: AlertProps;
-  product: ProductSnapshot;
-}
-
 export interface ListAlertsResult {
-  items: AlertWithProduct[];
+  items: AlertReadModel[];
   page: number;
   size: number;
   total: number;
@@ -56,31 +61,31 @@ export class ListAlerts {
       throw new InvalidStatusError(status);
     }
 
-    const page = input.page ?? 0;
+    const page = Math.max(1, input.page ?? 1);
     const size = input.size ?? 20;
 
     const repoStatus = status === 'BOTH' ? undefined : status;
-    const { items, total } = await this.alertRepo.list({
+    const pageResult = await this.alertRepo.list({
       ...(repoStatus != null && { status: repoStatus }),
       page,
       size,
     });
 
-    // Enrich with product snapshots
-    const enriched: AlertWithProduct[] = [];
-    for (const alert of items) {
+    // Compose each row. Drop alerts whose product has been deleted.
+    const items: AlertReadModel[] = [];
+    for (const alert of pageResult.items) {
       const product = await this.productRead.findById(alert.productId);
       if (product) {
-        enriched.push({ alert, product });
+        items.push(composeAlert(alert, product));
       }
     }
 
     return {
-      items: enriched,
-      page,
-      size,
-      total,
-      hasMore: (page + 1) * size < total,
+      items,
+      page: pageResult.page,
+      size: pageResult.size,
+      total: pageResult.total,
+      hasMore: pageResult.hasMore,
     };
   }
 }

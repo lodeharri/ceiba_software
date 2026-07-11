@@ -13,6 +13,7 @@ describe('StockMovement.create (inventory BC — domain)', () => {
       quantity: 5,
       reason: 'Reposición proveedor',
       userId: USER_ID,
+      stockAfter: 15,
     });
 
     expect(movement.id).toBe('22222222-2222-4222-8222-222222222222');
@@ -21,6 +22,7 @@ describe('StockMovement.create (inventory BC — domain)', () => {
     expect(movement.quantity).toBe(5);
     expect(movement.reason).toBe('Reposición proveedor');
     expect(movement.userId).toBe(USER_ID);
+    expect(movement.stockAfter).toBe(15);
     expect(movement.createdAt).toBeInstanceOf(Date);
   });
 
@@ -32,10 +34,12 @@ describe('StockMovement.create (inventory BC — domain)', () => {
       quantity: 3,
       reason: 'Venta mostrador',
       userId: USER_ID,
+      stockAfter: 7,
     });
 
     expect(movement.type).toBe('SALIDA');
     expect(movement.quantity).toBe(3);
+    expect(movement.stockAfter).toBe(7);
   });
 });
 
@@ -48,6 +52,7 @@ describe('StockMovement.applyTo (BR-D7, BR-D8)', () => {
       quantity: 5,
       reason: 'Reposición',
       userId: USER_ID,
+      stockAfter: 15,
     });
 
     expect(movement.applyTo(10)).toBe(15);
@@ -61,6 +66,7 @@ describe('StockMovement.applyTo (BR-D7, BR-D8)', () => {
       quantity: 3,
       reason: 'Venta',
       userId: USER_ID,
+      stockAfter: 7,
     });
 
     expect(movement.applyTo(10)).toBe(7);
@@ -74,6 +80,7 @@ describe('StockMovement.applyTo (BR-D7, BR-D8)', () => {
       quantity: 10,
       reason: 'Venta total',
       userId: USER_ID,
+      stockAfter: 0,
     });
 
     expect(movement.applyTo(10)).toBe(0);
@@ -90,6 +97,7 @@ describe('StockMovement invariants', () => {
         quantity: 0,
         reason: 'Test',
         userId: USER_ID,
+        stockAfter: 0,
       }),
     ).toThrow(/quantity/);
   });
@@ -103,6 +111,7 @@ describe('StockMovement invariants', () => {
         quantity: -5,
         reason: 'Test',
         userId: USER_ID,
+        stockAfter: 0,
       }),
     ).toThrow(/quantity/);
   });
@@ -116,6 +125,7 @@ describe('StockMovement invariants', () => {
         quantity: 5,
         reason: '',
         userId: USER_ID,
+        stockAfter: 5,
       }),
     ).toThrow(/reason/);
   });
@@ -129,6 +139,7 @@ describe('StockMovement invariants', () => {
         quantity: 5,
         reason: 'Test',
         userId: USER_ID,
+        stockAfter: 5,
       }),
     ).toThrow(/productId/);
   });
@@ -142,6 +153,7 @@ describe('StockMovement invariants', () => {
         quantity: 5,
         reason: 'Test',
         userId: USER_ID,
+        stockAfter: 5,
       }),
     ).toThrow(/id/);
   });
@@ -155,8 +167,37 @@ describe('StockMovement invariants', () => {
         quantity: 5,
         reason: 'Test',
         userId: USER_ID,
+        stockAfter: 5,
       }),
     ).toThrow(/type/);
+  });
+
+  it('rejects negative stockAfter', () => {
+    expect(() =>
+      StockMovement.create({
+        id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        productId: PRODUCT_ID,
+        type: 'ENTRADA',
+        quantity: 5,
+        reason: 'Test',
+        userId: USER_ID,
+        stockAfter: -1,
+      }),
+    ).toThrow(/stockAfter/);
+  });
+
+  it('rejects non-integer stockAfter', () => {
+    expect(() =>
+      StockMovement.create({
+        id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+        productId: PRODUCT_ID,
+        type: 'ENTRADA',
+        quantity: 5,
+        reason: 'Test',
+        userId: USER_ID,
+        stockAfter: 1.5,
+      }),
+    ).toThrow(/stockAfter/);
   });
 });
 
@@ -169,6 +210,7 @@ describe('StockMovement.sign derives from type (BR-D8)', () => {
       quantity: 100,
       reason: 'Big restock',
       userId: USER_ID,
+      stockAfter: 100,
     });
     const after = entrada.applyTo(0);
     expect(after).toBe(100);
@@ -182,6 +224,7 @@ describe('StockMovement.sign derives from type (BR-D8)', () => {
       quantity: 50,
       reason: 'Big sale',
       userId: USER_ID,
+      stockAfter: 50,
     });
     const after = salida.applyTo(100);
     expect(after).toBe(50);
