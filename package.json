@@ -35,6 +35,7 @@
     "dev:down": "docker compose -f docker-compose.dev.yml down",
     "dev:reset": "docker compose -f docker-compose.dev.yml down -v && rm -rf packages/frontend/node_modules/.vite",
     "dev": "concurrently -k -n db,api,web -c blue,green,magenta 'pnpm dev:up' 'pnpm dev:api' 'pnpm dev:web'",
+    "setup": "tsx scripts/setup.ts",
     "prepare": "husky"
   },
   "devDependencies": {
@@ -47,6 +48,7 @@
     "@typescript-eslint/parser": "^8.0.0",
     "@vitest/coverage-v8": "2.1.9",
     "concurrently": "^9.0.0",
+    "dotenv": "^16.4.5",
     "esbuild": "^0.28.1",
     "eslint": "^9.10.0",
     "eslint-plugin-boundaries": "^4.2.2",

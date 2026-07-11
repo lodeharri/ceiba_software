@@ -56,7 +56,13 @@ function buildStubMessage(opts: {
 }
 
 describe('toApiGatewayProxyEventV2 (REQ-NDS-3)', () => {
-  it('builds a verbatim APIGW v2 shape for POST /auth/login', () => {
+  it('builds a verbatim APIGW v2 shape for POST /api/v1/auth/login (prefix in routeKey, not in rawPath)', () => {
+    // PR 4: the dev server's `routeKey` MUST include `/api/v1` because the
+    // per-BC dispatchers (`packages/backend/src/shared/dispatchers/*`) key
+    // their `ROUTES` tables with the prefix. APIGW v2's `rawPath` payload
+    // remains prefix-stripped to match AWS wire format, but `routeKey`
+    // carries the full path the client requested so the dispatcher can
+    // pick the right route table.
     const req = buildStubMessage({
       method: 'POST',
       url: '/api/v1/auth/login',
@@ -67,13 +73,14 @@ describe('toApiGatewayProxyEventV2 (REQ-NDS-3)', () => {
       req: req as never,
       method: 'POST',
       rawPath: '/auth/login',
+      fullPath: '/api/v1/auth/login',
       rawQueryString: '',
       body: '{"username":"a","password":"b"}',
       cookies: [],
     });
     const serialized = JSON.parse(JSON.stringify(event));
     expect(serialized.version).toBe('2.0');
-    expect(serialized.routeKey).toBe('POST /auth/login');
+    expect(serialized.routeKey).toBe('POST /api/v1/auth/login');
     expect(serialized.rawPath).toBe('/auth/login');
     expect(serialized.rawQueryString).toBe('');
     expect(serialized.headers['content-type']).toBe('application/json');
@@ -86,7 +93,7 @@ describe('toApiGatewayProxyEventV2 (REQ-NDS-3)', () => {
     expect(serialized.requestContext.requestId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
-    expect(serialized.requestContext.routeKey).toBe('POST /auth/login');
+    expect(serialized.requestContext.routeKey).toBe('POST /api/v1/auth/login');
     expect(serialized.requestContext.stage).toBe('$default');
     expect(typeof serialized.requestContext.time).toBe('string');
     expect(Number.isFinite(serialized.requestContext.timeEpoch)).toBe(true);
@@ -108,6 +115,7 @@ describe('TRIANGULATE — edge cases (EC-3, EC-4)', () => {
       req: req as never,
       method: 'POST',
       rawPath: '/auth/login',
+      fullPath: '/api/v1/auth/login',
       rawQueryString: '',
       cookies: [],
     });
@@ -134,6 +142,7 @@ describe('TRIANGULATE — edge cases (EC-3, EC-4)', () => {
       req: multiReq as never,
       method: 'POST',
       rawPath: '/auth/login',
+      fullPath: '/api/v1/auth/login',
       rawQueryString: '',
       cookies: ['a=1', 'b=2'],
     });
@@ -153,6 +162,7 @@ describe('TRIANGULATE — edge cases (EC-3, EC-4)', () => {
       req: cookieReq as never,
       method: 'GET',
       rawPath: '/products',
+      fullPath: '/api/v1/products',
       rawQueryString: '',
       cookies: ['session=abc', 'csrf=xyz', 'tracking=123'],
     });
@@ -170,6 +180,7 @@ describe('TRIANGULATE — edge cases (EC-3, EC-4)', () => {
       req: req as never,
       method: 'GET',
       rawPath: '/products',
+      fullPath: '/api/v1/products',
       rawQueryString: '',
       cookies: [],
     });
@@ -228,6 +239,7 @@ describe('TRIANGULATE (Task 1.3) — AWS byte-equality (R-1 mitigation)', () => 
       req: req as never,
       method: 'POST',
       rawPath: '/auth/login',
+      fullPath: '/api/v1/auth/login',
       rawQueryString: '',
       body: '{"username":"a","password":"b"}',
       cookies: [],

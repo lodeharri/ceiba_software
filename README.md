@@ -51,8 +51,44 @@ Don't duplicate it here — this README links, not redefines.
 
 ## Local development
 
-Run `pnpm dev` — see [`docs/LOCAL-DEV.md`](docs/LOCAL-DEV.md) for the full
-quick path, the four sub-commands, troubleshooting, and the reset recipe.
+### Prerequisites
+
+- Node 20+
+- pnpm 9+
+- Docker + Docker Compose v2
+
+### Quickstart (one command from a fresh clone)
+
+```bash
+pnpm install
+pnpm setup     # bootstraps env, installs deps, brings up postgres + localstack, runs migrations + seed
+pnpm dev       # starts dev-server (api :3001) + Vite (web :5173) concurrently
+```
+
+After `pnpm dev` is running:
+
+- Web SPA: <http://localhost:5173>
+- API: <http://localhost:3001>
+- Health check: `curl http://localhost:3001/api/v1/health`
+- Login: `curl -X POST http://localhost:3001/api/v1/auth/login -H 'Content-Type: application/json' -d '{"username":"admin","password":"<your-admin-password-from-env-dev>"}'`
+
+### What `pnpm setup` does
+
+1. Copies `.env.dev.example` to `.env.dev` if missing (then **you must edit `.env.dev`** to set `JWT_SECRET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`).
+2. Brings up postgres + localstack via Docker Compose.
+3. Runs Prisma migrations.
+4. Seeds the database with the admin user + reference categories + reference products.
+
+### Troubleshooting
+
+- **`pnpm setup` fails at seed step**: re-run `pnpm setup` — it is idempotent. If persistent, `docker compose -f docker-compose.dev.yml down -v && pnpm setup` resets state.
+- **`pnpm dev` fails with `DATABASE_URL not set`**: you forgot to edit `.env.dev`. Open it and set at least `JWT_SECRET=...`.
+- **Port conflicts on 3001 / 4566 / 5173 / 5432**: see `docs/LOCAL-DEV.md` troubleshooting.
+- **Reset everything**: `pnpm dev:down -v && pnpm setup`.
+
+### Full documentation
+
+See [docs/LOCAL-DEV.md](docs/LOCAL-DEV.md) for the detailed local development guide.
 
 ## Scripts
 

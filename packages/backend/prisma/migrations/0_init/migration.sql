@@ -8,12 +8,17 @@
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- PR 4 fix: the schema declares `enum Role { admin }`; the migration must
+-- emit the Postgres type so Prisma's `user.upsert({ role: 'admin' })`
+-- (seed.ts line 96) does not fail with `type "public.Role" does not exist`.
+CREATE TYPE "Role" AS ENUM ('admin');
+
 CREATE TABLE "users" (
   "id"            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   "email"         TEXT        NOT NULL UNIQUE,
   "username"      TEXT        NOT NULL UNIQUE,
   "password_hash" TEXT        NOT NULL,
-  "role"          TEXT        NOT NULL DEFAULT 'admin',
+  "role"          "Role"      NOT NULL DEFAULT 'admin'::"Role",
   "created_at"    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX "users_username_idx" ON "users" ("username");

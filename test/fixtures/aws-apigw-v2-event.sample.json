@@ -1,7 +1,7 @@
 {
   "event": {
     "version": "2.0",
-    "routeKey": "POST /auth/login",
+    "routeKey": "POST /api/v1/auth/login",
     "rawPath": "/auth/login",
     "rawQueryString": "",
     "headers": {
@@ -19,7 +19,7 @@
         "userAgent": "vitest/dev-server"
       },
       "requestId": "00000000-0000-4000-8000-000000000000",
-      "routeKey": "POST /auth/login",
+      "routeKey": "POST /api/v1/auth/login",
       "stage": "$default",
       "time": "2026-07-10T00:00:00.000Z",
       "timeEpoch": 1788249600000

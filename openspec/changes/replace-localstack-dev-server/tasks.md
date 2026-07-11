@@ -443,6 +443,33 @@ Three PR-shaped work units, ordered by dependency. Each has clear start, finish,
 
 ---
 
+### PR 4 — Bootstrap fixes + one-shot dev-setup (empirical-test closeout)
+
+**Why this PR exists.** A fresh-clone developer running `pnpm install && pnpm dev` hits three deterministic defects that no manual workaround-free flow gets past:
+
+| Defect                                                  | Symptom                                                                    | Fix                                                                                                                                            |
+| ------------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| A — missing `Role` enum in `0_init/migration.sql`       | `pnpm db:seed` aborts with `type "public.Role" does not exist`             | Edit the migration to emit `CREATE TYPE "Role" AS ENUM ('admin')` before the `users` table; change the column type and default to use the enum |
+| B — `routeKey` stripped of `/api/v1` in the dev builder | All per-BC endpoints 404 (dispatchers key `ROUTES` tables with the prefix) | Builder sets `routeKey = method + fullPath` (prefixed); `rawPath` + `requestContext.http.path` stay prefix-stripped (AWS wire fidelity)        |
+| C — dev server never loads `.env.dev`                   | Handlers return 500 (`DATABASE_URL is undefined`, etc.)                    | Dev server imports `dotenv` and resolves `.env.dev` → `.env.dev.example` → `.env` before any handler is imported                               |
+
+Plus a one-shot `pnpm setup` script that chains env-copy + `pnpm install` + `pnpm dev:up` + healthcheck poll + `prisma migrate deploy` + `pnpm db:seed` so the developer flow becomes `pnpm install && pnpm setup && pnpm dev`.
+
+| Task | Description                                                                                                         | RED test                                                                                                                                                              | GREEN                                                                                                            | Status |
+| ---- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------ |
+| 4.1  | Add `CREATE TYPE "Role" AS ENUM ('admin')` to `0_init/migration.sql` and type the `users.role` column with the enum | `packages/backend/test/architecture/role-enum-migration.test.ts` (3 tests, all green)                                                                                 | migration.sql hand-edited                                                                                        | [x]    |
+| 4.2  | Builder `routeKey` carries the `/api/v1` prefix; `rawPath` + AWS-fixture `path` stay prefix-stripped                | `scripts/dev-server.event-shape.test.ts` — existing test rewired to assert `POST /api/v1/auth/login` on routeKey + `requestContext.routeKey`; byte-equality preserved | `scripts/events/apigw-v2-builder.ts` — `routeKey = method + fullPath`, `requestContext.http.path = rawPath`      | [x]    |
+| 4.3  | Dev server imports `dotenv` and resolves `.env.dev` before handler import                                           | `tests/architecture/no-bootstrap-gaps.test.ts` (3 tests, all green)                                                                                                   | `scripts/dev-server.ts` top-of-file `import { config as loadDotenv } from 'dotenv'` + conditional file selection | [x]    |
+| 4.4  | `pnpm setup` script: pre-flight → env-copy → install → up → health → migrate → seed → summary                       | `tests/architecture/setup-script.test.ts` (7 tests, all green)                                                                                                        | new `scripts/setup.ts` (eight phases, idempotent, retry-once on seed)                                            | [x]    |
+| 4.5  | README quickstart rewritten to use `pnpm install && pnpm setup && pnpm dev`                                         | (docs only — no test)                                                                                                                                                 | `README.md` Local development section replaced (cognitive-doc-design shape)                                      | [x]    |
+| 4.6  | Add `dotenv@^16.4.5` to root devDependencies + `setup` script                                                       | covered by 4.3 + 4.4 tests                                                                                                                                            | `package.json` edits + `pnpm install`                                                                            | [x]    |
+
+**Acceptance:** empirical smoke (Phase 7) curls `/health`, `/auth/login`, `/categories`, `/products` and all return 200 with non-empty bodies. **Status: ✅ PASS** (verified locally with the dev compose stack).
+
+**Rollback contract.** Reverting the merge restores the broken migration (re-running `pnpm db:seed` would fail again, but a developer who already had a working local DB needs to either re-`prisma migrate reset` or apply the additive migration `20260711000000_fix_role_enum` listed in the apply-progress.md "Risks" section.
+
+---
+
 ## 3. Coverage matrix (REQ → Task)
 
 | Requirement                                      | Source spec                      | Task(s)                                                                       |

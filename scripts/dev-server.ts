@@ -37,6 +37,26 @@
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { URL } from 'node:url';
+import { existsSync } from 'node:fs';
+
+// PR 4 fix (defect C): the dev server did not load `.env.dev` automatically,
+// so handlers returning PrismaClient (`new PrismaClient()`) failed with
+// `DATABASE_URL is undefined`. We resolve env in this priority order, all
+// before any userland import that reads process.env at module top:
+//   1. `.env.dev`           — developer's local override
+//   2. `.env.dev.example`   — project-locked defaults committed to git
+//   3. (fallback handled by `dotenv/config`'s built-in default of `.env`)
+// `dotenv/config` itself populates `process.env` from `.env` if no overrides
+// are set; explicit calls above take precedence (later writes win).
+import { config as loadDotenv } from 'dotenv';
+if (existsSync('.env.dev')) {
+  loadDotenv({ path: '.env.dev' });
+} else if (existsSync('.env.dev.example')) {
+  loadDotenv({ path: '.env.dev.example' });
+} else {
+  // No project env file at all — fall back to dotenv's default `.env`.
+  loadDotenv();
+}
 
 import { LAMBDAS } from '@mercadoexpress/infra';
 
@@ -415,6 +435,9 @@ function startRequest(context: RequestContext, req: IncomingMessage, res: Server
       req,
       method,
       rawPath: pathAfterPrefix,
+      // PR 4: routeKey must include `/api/v1` so the BC dispatchers'
+      // ROUTES tables (which key on the prefix) can match.
+      fullPath,
       rawQueryString,
       ...(body !== undefined ? { body } : {}),
       cookies,
