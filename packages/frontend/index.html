@@ -5,24 +5,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MercadoExpress</title>
     <!-- RISK-W01: Content Security Policy.
-         Connect-src restricts API calls to the API Gateway domain only.
-         style-src 'unsafe-inline' is required for TailwindCSS JIT.
-         frame-ancestors: none prevents clickjacking.
-         base-uri: self prevents base-tag hijacking.
-         form-action: self restricts form submissions. -->
+             Directive breakdown:
+               default-src 'self'                                       — default deny, same-origin only
+               script-src 'self' 'unsafe-eval'                          — 'unsafe-eval' is REQUIRED: Vue 3
+                 runtime, vue-i18n message compilation, destr (secure JSON parser),
+                 and several internal helpers use new Function() for hot paths.
+                 Trade-off: accepting eval in exchange for SPA functionality.
+                 For prod, consider strict-dynamic + nonce-based CSP (separate work).
+               connect-src 'self'                                       — same-origin
+                                 http://localhost:*                       — dev back (native)
+                                 http://host.docker.internal:*            — back seen from inside the SPA container
+                                 ws://localhost:* ws://host.docker.internal:* — Vite HMR (if used)
+                                 https://*.execute-api.us-east-1.amazonaws.com — prod API Gateway
+               style-src 'self' 'unsafe-inline'                         — 'unsafe-inline' for Tailwind JIT runtime styles
+               img-src 'self' data:                                     — data: URIs for inline images
+               font-src 'self' data:                                    — @fontsource-variable/* embeds fonts as data:font/woff2
+               frame-ancestors 'none'                                   — anti-clickjacking
+               object-src 'none'                                        — block <object>/<embed>
+               base-uri 'self'                                          — anti base-tag hijacking
+               form-action 'self'                                       — restrict form submissions
+             In production builds, override via vite.config.ts transformIndexHtml to drop
+             the localhost entries and keep only 'self' + the prod API Gateway domain. -->
     <meta
       http-equiv="Content-Security-Policy"
       content="
-        default-src 'self';
-        connect-src 'self' https://*.execute-api.us-east-1.amazonaws.com;
-        style-src 'self' 'unsafe-inline';
-        img-src 'self' data:;
-        font-src 'self';
-        frame-ancestors 'none';
-        object-src 'none';
-        base-uri 'self';
-        form-action 'self';
-      "
+            default-src 'self';
+            script-src 'self' 'unsafe-eval';
+            connect-src 'self' http://localhost:* http://host.docker.internal:* ws://localhost:* ws://host.docker.internal:* https://*.execute-api.us-east-1.amazonaws.com;
+            style-src 'self' 'unsafe-inline';
+            img-src 'self' data:;
+            font-src 'self' data:;
+            frame-ancestors 'none';
+            object-src 'none';
+            base-uri 'self';
+            form-action 'self';
+          "
     />
   </head>
   <body>

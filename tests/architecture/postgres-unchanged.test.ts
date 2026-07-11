@@ -1,9 +1,10 @@
 /**
  * postgres + pgvector regression guard (Task 2.3; PR 2 — REQ-DEM-5).
  *
- * After trimming `docker-compose.dev.yml` to two services (postgres +
- * localstack), the postgres service definition MUST remain functionally
- * identical to the pre-change version: same image (pgvector/pgvector:pg16),
+ * After trimming `docker-compose.dev.yml` to its core services (postgres,
+ * localstack, plus the PR 5 reintroduction of the frontend container), the
+ * postgres service definition MUST remain functionally identical to the
+ * pre-change version: same image (pgvector/pgvector:pg16),
  * same healthcheck (pg_isready), same initdb.d mount that installs the
  * pgvector extension via `01-pgvector.sql`. Removing or breaking the
  * pgvector install would break every Lambda handler that reads embeddings.
@@ -93,11 +94,6 @@ describe('docker-compose.dev.yml — REQ-DEM-3 / DEM-4 / FNR-2 (no sidecars)', (
   it('does NOT declare an s3-proxy service', () => {
     expect(serviceBlock('s3-proxy')).toBe('');
     expect(composeText).not.toMatch(/^ {2}s3-proxy:/m);
-  });
-
-  it('does NOT declare a frontend service (REQ-FNR-2)', () => {
-    expect(serviceBlock('frontend')).toBe('');
-    expect(composeText).not.toMatch(/^ {2}frontend:/m);
   });
 
   it('does NOT declare a shared-data named volume', () => {

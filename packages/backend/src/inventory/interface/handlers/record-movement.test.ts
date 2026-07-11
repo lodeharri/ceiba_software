@@ -1,10 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 import { ErrorCode } from '@mercadoexpress/shared';
-import { StockMutationService } from '../../application/stock-mutation-service.js';
 import { StockWouldGoNegativeError } from '../../domain/errors/stock-would-go-negative.js';
 import { ProductNotFoundError } from '../../domain/errors/product-not-found.js';
-import type { AlertCloserPort } from '../../../alerts/domain/ports/alert-closer-port.js';
 
 // Module-level mocks must be defined before importing the handler
 vi.mock('../../bootstrap.js', () => {

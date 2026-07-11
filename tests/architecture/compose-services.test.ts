@@ -39,14 +39,14 @@ function dockerCompose(args: string[]): string {
 }
 
 describe('docker-compose.dev.yml — REQ-DEM-1, DEM-3, FNR-2 (services)', () => {
-  it('declares exactly two services: postgres + localstack', () => {
+  it('declares exactly three services: postgres + localstack + frontend', () => {
     const out = dockerCompose(['config', '--services']);
     const services = out
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
       .sort();
-    expect(services).toEqual(['localstack', 'postgres']);
+    expect(services).toEqual(['frontend', 'localstack', 'postgres']);
   });
 
   it('does NOT declare deployer, s3-proxy, frontend, redis, pgadmin, or any other service', () => {
@@ -55,7 +55,7 @@ describe('docker-compose.dev.yml — REQ-DEM-1, DEM-3, FNR-2 (services)', () => 
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
-    for (const forbidden of ['deployer', 's3-proxy', 'frontend', 'redis', 'pgadmin']) {
+    for (const forbidden of ['deployer', 's3-proxy', 'redis', 'pgadmin']) {
       expect(services).not.toContain(forbidden);
     }
   });

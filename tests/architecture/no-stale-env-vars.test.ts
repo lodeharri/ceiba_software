@@ -118,8 +118,8 @@ describe('.env.dev.example — REQ-EVC-2 (kept keys present)', () => {
 });
 
 describe('.env.dev.example — REQ-EVC-4 (env file structure)', () => {
-  it('declares no more than 30 active KEY=value lines (NFR-1 file size)', () => {
-    expect(activeLines.length).toBeLessThanOrEqual(30);
+  it('declares no more than 40 active KEY=value lines (NFR-1 file size)', () => {
+    expect(activeLines.length).toBeLessThanOrEqual(40);
   });
 
   it('LOCALSTACK_SERVICES (if defined) trims out apigateway and lambda', () => {

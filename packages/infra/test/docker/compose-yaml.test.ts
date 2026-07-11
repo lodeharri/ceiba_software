@@ -53,6 +53,9 @@ describe('docker-compose.dev.yml', () => {
     const cases: ReadonlyArray<{ name: string; re: RegExp }> = [
       { name: 'postgres', re: /^\s{2}postgres:\s*$/m },
       { name: 'localstack', re: /^\s{2}localstack:\s*$/m },
+      // PR 5 reintroduces the frontend: service (multi-stage nginx-served
+      // build from packages/frontend/).
+      { name: 'frontend', re: /^\s{2}frontend:\s*$/m },
     ];
 
     for (const { name, re } of cases) {
@@ -70,7 +73,6 @@ describe('docker-compose.dev.yml', () => {
       // localstack survive in the compose file.
       expect(composeText()).not.toMatch(/^\s{2}deployer:\s*$/m);
       expect(composeText()).not.toMatch(/^\s{2}s3-proxy:\s*$/m);
-      expect(composeText()).not.toMatch(/^\s{2}frontend:\s*$/m);
     });
 
     it('does NOT declare the legacy shared volume', () => {
@@ -120,7 +122,11 @@ describe('docker-compose.dev.yml', () => {
     // The compose file must use ${POSTGRES_PORT}, ${LOCALSTACK_PORT} —
     // never literal port numbers. The .env.dev.example file is where the
     // defaults live; the compose file stays environment-driven.
-    const forbidden = [/['"]?5432['"]?/, /['"]?4566['"]?/];
+    // PR 5 expands the forbidden list: 5173 (browser-facing frontend
+    // port) and 80 (nginx-internal port) are now part of the contract.
+    // The architecture suite's `no-hardcoded-ports.test.ts` is the
+    // exhaustive guard; this list mirrors the most relevant ones.
+    const forbidden = [/['"]?5432['"]?/, /['"]?4566['"]?/, /['"]?5173['"]?/, /['"]?80['"]?/];
 
     for (const pattern of forbidden) {
       it(`does not contain the literal port ${pattern.source}`, () => {

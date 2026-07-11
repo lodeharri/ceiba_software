@@ -686,4 +686,168 @@ Hand off to the orchestrator for `gentle_review validate` → pre-push → pre-P
 ---
 
 End of apply-progress.md — PR 4.
+
+
+# Apply Progress — `replace-localstack-dev-server` — PR 5
+
+**Phase:** sdd-apply · **Change folder:** `openspec/changes/replace-localstack-dev-server/`
+**PR scope (this invocation):** PR 5 — Frontend in Docker + CORS + env-driven ports.
+**Strict TDD:** ACTIVE.
+
+## Why this PR exists
+
+PR 2 removed the old `docker/frontend/` (a Vue-in-container sidecar) and replaced it with `pnpm dev:web` (Vite native). For a fresh-clone developer, this meant two terminals: `pnpm dev:api` (back) + `pnpm dev:web` (front). The user requested bringing the front back into the compose stack so a single `docker compose up -d` brings up everything. PR 5 reintroduces the front as a clean multi-stage nginx-served build, parameterized by env vars (NEVER hardcoded ports, per the user's explicit instruction: "nunca quemes rutas siempre usa variables de entorno para los ports").
+
+## Files changed / created
+
+### Production
+
+- `packages/frontend/Dockerfile` (NEW, multi-stage) — Stage 1 `node:20-alpine` builds the Vite SPA with `VITE_API_BASE_URL` injected as a build-time `ARG`. Stage 2 `nginx:1.27-alpine` serves the built `dist/`.
+- `packages/frontend/nginx.conf` (NEW) — SPA fallback to `index.html` for Vue Router routes; long cache for fingerprinted assets; `no-cache` for `index.html`.
+- `docker-compose.dev.yml` (M) — added `frontend:` service block. `ports: '${FRONTEND_PORT}:${FRONTEND_DOCKER_PORT}'` (no literals). `container_name: ${FRONTEND_CONTAINER_NAME}` (no literal). `build.args.VITE_API_BASE_URL` interpolated from `${VITE_API_BASE_URL}`.
+- `.env.dev.example` (M) — added `FRONTEND_CONTAINER_NAME=ceiba-frontend`, `FRONTEND_DOCKER_PORT=80`, `FRONTEND_HEALTHCHECK_RETRIES=10`. The user's `.env.dev` was patched to mirror these for the empirical smoke.
+
+### Deletions
+
+- `tests/architecture/no-frontend-service.test.ts` (D) — obsolete: the compose now intentionally has a `frontend` service.
+
+### Tests (40 new, all green)
+
+- `tests/architecture/no-hardcoded-ports.test.ts` (NEW, 12 tests) — greps `docker-compose.dev.yml` for literal port mappings and asserts no matches. Negative test included: writes a temp file with literal `3001:3001`, verifies the grep catches it, then removes.
+- `tests/architecture/frontend-container.test.ts` (NEW, 15 tests) — asserts the `frontend:` service block exists in compose with `build`, `container_name: ${...}`, `ports:` with `${...}`, `networks: [local-dev]`, `healthcheck`. Also asserts `packages/frontend/Dockerfile` + `packages/frontend/nginx.conf` exist.
+- `tests/architecture/cors-allowed-origins.test.ts` (NEW, 6 tests) — reads `scripts/dev-server.ts`, asserts the CORS preflight handler emits `Access-Control-Allow-Origin: *` (per REQ-NDS-7).
+- `tests/architecture/env-vars-have-defaults.test.ts` (NEW, 7 tests) — asserts `.env.dev.example` contains the new `FRONTEND_*` keys with the expected values.
+
+### Modified (kept in sync with the new state)
+
+- `tests/architecture/compose-services.test.ts` (M) — expects 3 services (`postgres`, `localstack`, `frontend`) instead of 2.
+- `tests/architecture/no-stale-env-vars.test.ts` (M) — accepts the new `FRONTEND_CONTAINER_NAME`, `FRONTEND_DOCKER_PORT`, `FRONTEND_HEALTHCHECK_RETRIES`.
+- `tests/architecture/postgres-unchanged.test.ts` (M) — accepts the new `frontend` service without tripping the "no sidecars" guard.
+- `packages/infra/test/docker/compose-yaml.test.ts` (M) — accepts the new `frontend` service.
+
+## TDD cycle evidence
+
+| Architecture test | RED (before fix) | GREEN landing | TRIANGULATE |
+|---|---|---|---|
+| `no-hardcoded-ports` | grep finds literal `5173:5173` in initial draft of compose | compose rewritten with `${FRONTEND_PORT}:${FRONTEND_DOCKER_PORT}` | negative test inserts literal, sees grep fail, then removes it |
+| `frontend-container` | compose has no `frontend:` block | added service with build + container_name + ports + networks + healthcheck | asserts each required key independently |
+| `cors-allowed-origins` | dev-server CORS handler emits nothing for non-/api/v1 paths | preflight short-circuit emits `*` | request with `Origin: http://localhost:5173` returns `Access-Control-Allow-Origin: *` |
+| `env-vars-have-defaults` | `.env.dev.example` missing the new vars | added 3 lines under "Frontend container (PR 5)" section | asserts each key + value pair independently |
+
+## Verification commands run
+
+```bash
+# Build + bring up full stack
+docker compose --env-file .env.dev -f docker-compose.dev.yml down -v
+docker compose --env-file .env.dev -f docker-compose.dev.yml up -d --build
+
+# All 3 services healthy
+docker compose --env-file .env.dev -f docker-compose.dev.yml ps
+# ceiba-postgres    Up X minutes (healthy)
+# ceiba-localstack  Up X minutes (healthy)
+# ceiba-frontend    Up X minutes (healthy)   0.0.0.0:5173->80/tcp
+
+# Front serves SPA
+curl -is http://localhost:5173/
+# HTTP/1.1 200 OK
+# Server: nginx/1.27.5
+# Content-Type: text/html
+
+# SPA fallback (Vue Router routes)
+for r in /products /login /categories /some/spa/route; do
+  curl -s -o /dev/null -w "$r -> %{http_code}n" http://localhost:5173$r
+done
+# All return 200
+
+# VITE_API_BASE_URL baked into bundle
+docker exec ceiba-frontend sh -c \
+  'grep -roE "localhost:[0-9]+/api/v1" /usr/share/nginx/html/assets/*.js'
+# /usr/share/nginx/html/assets/http-ClNWo5N2.js:localhost:3001/api/v1
+
+# Workspace tests
+pnpm -w vitest run
+# Test Files  109 passed (109)
+#      Tests  638 passed (638)
+
+# New architecture tests in isolation
+pnpm -w vitest run tests/architecture/no-hardcoded-ports.test.ts \
+                    tests/architecture/frontend-container.test.ts \
+                    tests/architecture/cors-allowed-origins.test.ts \
+                    tests/architecture/env-vars-have-defaults.test.ts
+# Test Files  4 passed (4)
+#      Tests  40 passed (40)
+```
+
+## Empirical smoke (the user's explicit ask)
+
+**DB write confirmed end-to-end:**
+
+```
+TOKEN=$(curl -s -X POST http://localhost:3001/api/v1/auth/login \
+  -H "Origin: http://localhost:5173" \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"admin123-change-me-in-prod"}' \
+  | jq -r .token)
+# Token: OK (284 chars)
+
+BEFORE=$(docker exec ceiba-postgres psql -U ceiba -d mercadoexpress \
+  -tA -c "SELECT COUNT(*) FROM products;")
+# 9
+
+CODE=$(curl -s -o /tmp/post.json -w "%{http_code}" -X POST \
+  http://localhost:3001/api/v1/products \
+  -H "Origin: http://localhost:5173" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"sku":"PR5-FINAL","name":"PR5 final verify","price":777,"stock":3,"stockMin":1,"supplier":"PR5","categoryId":"..."}')
+# POST /products HTTP: 201
+
+AFTER=$(docker exec ceiba-postgres psql -U ceiba -d mercadoexpress \
+  -tA -c "SELECT COUNT(*) FROM products;")
+# 10
+
+docker exec ceiba-postgres psql -U ceiba -d mercadoexpress \
+  -c "SELECT sku, name, price FROM products WHERE sku='PR5-FINAL';"
+#     sku    |       name       | price
+# -----------+------------------+-------
+#  PR5-FINAL | PR5 final verify |   777
+
+# DB WRITE CONFIRMED: 9 -> 10
+```
+
+## Deviations
+
+- **`docker compose exec` quirk on this host's CLI version** caused "service X is not running" messages during the empirical smoke even though the containers were healthy. The orchestrator switched to `docker exec` (without `compose`) which works reliably. Documented for future agents running PR verification on this machine.
+- **The host does not have `psql` installed.** All DB counts in the smoke come from `docker exec ceiba-postgres psql`.
+
+## Risks tracked forward
+
+- **CORS is wide-open (`*`).** This is REQ-NDS-7 (intentional for the dev server). When this app ships to prod, ApiStack narrows `Access-Control-Allow-Origin` to the CloudFront domain. The dev server's wildcard is documented and acceptable for local-only use.
+- **`FRONTEND_DOCKER_PORT=80` is the nginx default.** If a developer wants to run nginx on a non-standard port, they override the env var. The Dockerfile's `EXPOSE 80` matches.
+- **`VITE_API_BASE_URL` is baked at build time.** Changing `VITE_API_BASE_URL` requires `docker compose up -d --build frontend`. The user must know this — a future UX improvement could move to runtime env substitution via `envsubst` on the nginx config.
+
+## Work-unit commits (NOT committed — orchestrator owns commit)
+
+Suggested slices for the user's `git commit`:
+
+1. `feat(frontend): add multi-stage Dockerfile (nginx-served SPA)` — `packages/frontend/Dockerfile`
+2. `feat(frontend): add nginx.conf with SPA fallback` — `packages/frontend/nginx.conf`
+3. `feat(compose): add frontend service to docker-compose.dev.yml (env-driven ports)` — `docker-compose.dev.yml`, `.env.dev.example`
+4. `test(architecture): no-hardcoded-ports + frontend-container + cors-allowed-origins + env-vars-have-defaults` — 4 new test files
+5. `test(architecture): sync existing tests with the new frontend service` — 4 modified test files + 1 deleted (`no-frontend-service.test.ts`)
+6. `chore(compose-yaml): update infra test for 3-service compose` — `packages/infra/test/docker/compose-yaml.test.ts`
+7. `docs(openspec): record PR 5 apply-progress` — `openspec/changes/replace-localstack-dev-server/apply-progress.md`
+
+## Next step
+
+Hand off to the orchestrator. The user runs in their shell:
+
+```bash
+git commit -m "feat(dev): frontend in Docker + CORS + env-driven ports (PR 5 of replace-localstack-dev-server)"
+git push
+```
+
+---
+
+End of apply-progress.md — PR 5.
 ````
