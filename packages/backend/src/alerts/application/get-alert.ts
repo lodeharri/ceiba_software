@@ -1,10 +1,10 @@
 /**
  * Alerts BC — GetAlert use case.
  *
- * Fetches a single alert by id, composed via `composeAlert(alert, product)`
- * to match the canonical flat `Alert` read model in `packages/shared` —
- * `productName` / `productSku` / `stockAtOpen` / `stockMin` are required
- * by the schema.
+ * Returns the composed flat `Alert` read model by id.
+ * productName / productSku / stockAtOpen / stockMin are enriched from the
+ * joined product entity so the response matches the canonical flat
+ * `AlertReadModel` schema in `packages/shared`.
  *
  * If the product has been deleted since the alert opened, throws
  * `AlertProductInconsistencyError` (422) rather than returning a partial
@@ -22,17 +22,13 @@ export interface GetAlertInput {
   id: string;
 }
 
-export interface GetAlertResult {
-  alert: AlertReadModel;
-}
-
 export class GetAlert {
   constructor(
     private readonly alertRepo: AlertRepository,
     private readonly productRead: ProductReadPort,
   ) {}
 
-  async execute(input: GetAlertInput): Promise<GetAlertResult> {
+  async execute(input: GetAlertInput): Promise<AlertReadModel> {
     const alert = await this.alertRepo.findById(input.id);
     if (!alert) {
       throw new AlertNotFoundError(input.id);
@@ -41,6 +37,6 @@ export class GetAlert {
     if (!product) {
       throw new AlertProductInconsistencyError(alert.id, alert.productId);
     }
-    return { alert: composeAlert(alert, product) };
+    return composeAlert(alert, product);
   }
 }

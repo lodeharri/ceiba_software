@@ -1,5 +1,5 @@
 /**
- * Orders BC — `GET /api/v1/orders/{id}` handler (PR 2c).
+ * Orders BC — `GET /api/v1/orders/{id}` handler.
  */
 
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
@@ -30,7 +30,7 @@ export const handler = withRequestContext(
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json', 'X-Request-Id': ctx.requestId },
-        body: JSON.stringify({ ...result, requestId: ctx.requestId }),
+        body: JSON.stringify(result),
       };
     } catch (err) {
       return toErrorResponse(err, { requestId: ctx.requestId, log: ctx.logger });

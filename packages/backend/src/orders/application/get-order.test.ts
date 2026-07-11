@@ -66,19 +66,19 @@ describe('GetOrderUseCase', () => {
   it('happy: returns order in PENDIENTE with composed productName/productSku', async () => {
     const useCase = new GetOrderUseCase(makeOrderRepo(makeProps('PENDIENTE')), makeProductRepo());
     const result = await useCase.execute(O);
-    expect(result.order.status).toBe('PENDIENTE');
-    expect(result.order.productName).toBe('Cerveza');
-    expect(result.order.productSku).toBe('SKU-001');
-    expect(result.order.productId).toBe(P);
-    expect(result.order.quantity).toBe(60);
+    expect(result.status).toBe('PENDIENTE');
+    expect(result.productName).toBe('Cerveza');
+    expect(result.productSku).toBe('SKU-001');
+    expect(result.productId).toBe(P);
+    expect(result.quantity).toBe(60);
   });
 
   it('happy: returns order in RECHAZADA with reason and composed product', async () => {
     const useCase = new GetOrderUseCase(makeOrderRepo(makeProps('RECHAZADA')), makeProductRepo());
     const result = await useCase.execute(O);
-    expect(result.order.status).toBe('RECHAZADA');
-    expect(result.order.rejectionReason).toBe('Proveedor sin stock.');
-    expect(result.order.productName).toBe('Cerveza');
+    expect(result.status).toBe('RECHAZADA');
+    expect(result.rejectionReason).toBe('Proveedor sin stock.');
+    expect(result.productName).toBe('Cerveza');
   });
 
   it('unknown id → 404 NOT_FOUND', async () => {

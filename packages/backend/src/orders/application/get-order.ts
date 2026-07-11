@@ -1,9 +1,10 @@
 /**
- * Orders BC — GetOrderUseCase (PR 2c, orders/spec.md).
+ * Orders BC — GetOrderUseCase.
  *
- * Returns a single order by id, composed via `composeOrder(order, product)`
- * to match the canonical flat `Order` read model in `packages/shared` —
- * productName / productSku are required by the schema.
+ * Returns the composed flat `Order` read model by id.
+ * productName / productSku are enriched from the joined product entity
+ * so the response matches the canonical flat `OrderReadModel` schema in
+ * `packages/shared`.
  *
  * If the product has been deleted since the order was created, throws
  * OrderProductInconsistencyError (422) rather than returning a partial
@@ -17,17 +18,13 @@ import { OrderNotFoundError } from '../domain/errors/order-not-found.js';
 import { OrderProductInconsistencyError } from '../domain/errors/order-product-inconsistency.js';
 import { composeOrder, type OrderReadModel } from './compose-order.js';
 
-export interface GetOrderResult {
-  order: OrderReadModel;
-}
-
 export class GetOrderUseCase {
   constructor(
     private readonly orderRepo: OrderRepository,
     private readonly productRepo: ProductReadRepository,
   ) {}
 
-  async execute(orderId: string): Promise<GetOrderResult> {
+  async execute(orderId: string): Promise<OrderReadModel> {
     const order = await this.orderRepo.findById(orderId);
     if (!order) {
       throw new OrderNotFoundError(orderId);
@@ -36,6 +33,6 @@ export class GetOrderUseCase {
     if (!product) {
       throw new OrderProductInconsistencyError(order.id, order.productId);
     }
-    return { order: composeOrder(order, product) };
+    return composeOrder(order, product);
   }
 }

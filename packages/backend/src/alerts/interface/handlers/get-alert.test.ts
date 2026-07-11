@@ -71,9 +71,7 @@ describe('GET /alerts/{id} handler', () => {
   });
 
   it('returns 200 with flat alert on success', async () => {
-    _getMockGetAlert().mockResolvedValue({
-      alert: makeFlatAlert(),
-    });
+    _getMockGetAlert().mockResolvedValue(makeFlatAlert());
 
     const event = makeEvent();
     const result = await handler(event, {} as never, () => {});
@@ -81,19 +79,17 @@ describe('GET /alerts/{id} handler', () => {
     expect(result.statusCode).toBe(200);
     const body = JSON.parse(result.body as string);
     // Flat shape: id / productName / productSku / stockAtOpen / stockMin
-    // live on `body.alert` (not under nested `alert`/`product` keys).
-    expect(body.alert.id).toBe('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
-    expect(body.alert.status).toBe('ACTIVA');
-    expect(body.alert.productName).toBe('Test Product');
-    expect(body.alert.productSku).toBe('SKU123');
-    expect(body.alert.stockAtOpen).toBe(5);
-    expect(body.alert.stockMin).toBe(10);
+    // live directly on body (not under nested `alert`/`product` keys).
+    expect(body.id).toBe('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
+    expect(body.status).toBe('ACTIVA');
+    expect(body.productName).toBe('Test Product');
+    expect(body.productSku).toBe('SKU123');
+    expect(body.stockAtOpen).toBe(5);
+    expect(body.stockMin).toBe(10);
   });
 
   it('regression guard: body does not contain a top-level `product` field', async () => {
-    _getMockGetAlert().mockResolvedValue({
-      alert: makeFlatAlert(),
-    });
+    _getMockGetAlert().mockResolvedValue(makeFlatAlert());
 
     const event = makeEvent();
     const result = await handler(event, {} as never, () => {});
@@ -102,6 +98,8 @@ describe('GET /alerts/{id} handler', () => {
     // The previous (wrong) shape returned `{ alert: {...}, product: {...} }`.
     // If a future refactor reintroduces that wrapper, this guard fires.
     expect(body.product).toBeUndefined();
+    // Regression guard: no envelope { alert }
+    expect(body.alert).toBeUndefined();
   });
 
   it('returns 404 for unknown alert id', async () => {

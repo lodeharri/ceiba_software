@@ -41,9 +41,7 @@ export const handler = withRequestContext(
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json', 'X-Request-Id': ctx.requestId },
-        body: JSON.stringify({
-          alert: result.alert,
-        }),
+        body: JSON.stringify(result),
       };
     } catch (err) {
       return toErrorResponse(err, { requestId: ctx.requestId, log: ctx.logger });

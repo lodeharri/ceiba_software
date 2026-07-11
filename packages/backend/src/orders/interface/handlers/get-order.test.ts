@@ -23,21 +23,19 @@ vi.mock('./bootstrap.js', () => ({
   getOrdersBootstrap: vi.fn(() => ({
     getOrderUseCase: {
       execute: vi.fn().mockResolvedValue({
-        order: {
-          id: O,
-          productId: 'p1',
-          productName: 'Cerveza',
-          productSku: 'SKU-001',
-          quantity: 60,
-          supplierSnapshot: 'SnacksCorp',
-          fromAlertId: null,
-          status: 'PENDIENTE',
-          rejectionReason: null,
-          createdBy: 'u1',
-          createdAt: '2025-01-01T00:00:00.000Z',
-          updatedAt: '2025-01-01T00:00:00.000Z',
-          receivedAt: null,
-        },
+        id: O,
+        productId: 'p1',
+        productName: 'Cerveza',
+        productSku: 'SKU-001',
+        quantity: 60,
+        supplierSnapshot: 'SnacksCorp',
+        fromAlertId: null,
+        status: 'PENDIENTE',
+        rejectionReason: null,
+        createdBy: 'u1',
+        createdAt: '2025-01-01T00:00:00.000Z',
+        updatedAt: '2025-01-01T00:00:00.000Z',
+        receivedAt: null,
       }),
     },
   })),
@@ -48,6 +46,18 @@ const { handler } = await import('./get-order.js');
 const CTX = { requestId: 'r-123', logger: { info: vi.fn(), error: vi.fn() } } as unknown;
 
 describe('GET /api/v1/orders/{id} handler', () => {
+  it('regression: response body does not contain envelope { order }', async () => {
+    const result = await (
+      handler as (
+        e: APIGatewayProxyEventV2,
+        c: unknown,
+      ) => Promise<{ statusCode: number; body?: string }>
+    )(makeEvent(O), CTX);
+    expect(result.statusCode).toBe(200);
+    const body = JSON.parse(result.body!);
+    expect(body.order).toBeUndefined();
+  });
+
   it('returns 200 with composed order', async () => {
     const result = await (
       handler as (
@@ -57,7 +67,10 @@ describe('GET /api/v1/orders/{id} handler', () => {
     )(makeEvent(O), CTX);
     expect(result.statusCode).toBe(200);
     const body = JSON.parse(result.body!);
-    expect(body.order.productName).toBe('Cerveza');
-    expect(body.order.productSku).toBe('SKU-001');
+    expect(body.productName).toBe('Cerveza');
+    expect(body.productSku).toBe('SKU-001');
+    // Regression guard: no envelope, no requestId in body
+    expect(body.order).toBeUndefined();
+    expect(body.requestId).toBeUndefined();
   });
 });

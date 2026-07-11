@@ -167,15 +167,15 @@ describe('OrderCreatePage', () => {
 
     const wrapper = await mountPage(router);
 
-    // Select product and set quantity
+    // Select product and set quantity (BR-2: >= 2*stockMin = 20)
     await wrapper.find('#order-product').setValue(P1);
-    await wrapper.find('#order-qty').setValue(5);
+    await wrapper.find('#order-qty').setValue(50);
 
     await wrapper.find('form').trigger('submit');
     await router.isReady();
     await new Promise((r) => setTimeout(r, 10));
 
-    expect(mockCreate).toHaveBeenCalledWith({ productId: P1, quantity: 5 });
+    expect(mockCreate).toHaveBeenCalledWith({ productId: P1, quantity: 50 });
     expect(router.currentRoute.value.name).toBe('orders-list');
     wrapper.unmount();
   });
@@ -191,7 +191,7 @@ describe('OrderCreatePage', () => {
 
     const wrapper = await mountPage(router);
     await wrapper.find('#order-product').setValue(P1);
-    await wrapper.find('#order-qty').setValue(5);
+    await wrapper.find('#order-qty').setValue(50);
 
     await wrapper.find('form').trigger('submit');
     await new Promise((r) => setTimeout(r, 20));
@@ -213,7 +213,7 @@ describe('OrderCreatePage', () => {
 
     const wrapper = await mountPage(router);
     await wrapper.find('#order-product').setValue(P1);
-    await wrapper.find('#order-qty').setValue(5);
+    await wrapper.find('#order-qty').setValue(50);
 
     await wrapper.find('form').trigger('submit');
     await new Promise((r) => setTimeout(r, 20));
@@ -252,7 +252,7 @@ describe('OrderCreatePage', () => {
 
     const wrapper = await mountPage(router);
     await wrapper.find('#order-product').setValue(P1);
-    await wrapper.find('#order-qty').setValue(5);
+    await wrapper.find('#order-qty').setValue(50);
 
     // First submit — fails
     await wrapper.find('form').trigger('submit');
@@ -261,7 +261,7 @@ describe('OrderCreatePage', () => {
 
     // Second submit — succeeds, error should be gone
     await wrapper.find('#order-product').setValue(P1);
-    await wrapper.find('#order-qty').setValue(5);
+    await wrapper.find('#order-qty').setValue(50);
     await wrapper.find('form').trigger('submit');
     await new Promise((r) => setTimeout(r, 20));
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
@@ -344,13 +344,100 @@ describe('OrderCreatePage', () => {
     // No alert hint is shown
     expect(wrapper.text()).not.toContain('Producto pre-seleccionado');
 
-    // Happy path still works
+    // Happy path still works (BR-2: >= 2*10 = 20)
     await wrapper.find('#order-product').setValue(P1);
-    await wrapper.find('#order-qty').setValue(5);
+    await wrapper.find('#order-qty').setValue(50);
     await wrapper.find('form').trigger('submit');
     await new Promise((r) => setTimeout(r, 20));
 
-    expect(mockCreate).toHaveBeenCalledWith({ productId: P1, quantity: 5 });
+    expect(mockCreate).toHaveBeenCalledWith({ productId: P1, quantity: 50 });
+    expect(router.currentRoute.value.name).toBe('orders-list');
+    wrapper.unmount();
+  });
+
+  // -------------------------------------------------------------------
+  // BR-2 / RF-04: minimum quantity = 2 x stockMin
+  // -------------------------------------------------------------------
+
+  it('shows hint with minimum required quantity when product is selected (BR-2)', async () => {
+    const router = createRouterWrapper();
+    router.push({ name: 'order-create' });
+    await router.isReady();
+
+    const wrapper = await mountPage(router);
+    await new Promise((r) => setTimeout(r, 10));
+
+    // No product selected yet → no hint
+    expect(wrapper.find('[data-testid="order-qty-hint"]').exists()).toBe(false);
+
+    // Select product with stockMin=10 → 2*10=20
+    await wrapper.find('#order-product').setValue(P1);
+    await new Promise((r) => setTimeout(r, 5));
+
+    const hint = wrapper.find('[data-testid="order-qty-hint"]');
+    expect(hint.exists()).toBe(true);
+    expect(hint.text()).toContain('20');
+    expect(hint.text()).toContain('2× stock mínimo');
+    wrapper.unmount();
+  });
+
+  it('blocks submit and shows BR-2 error when quantity < 2*stockMin', async () => {
+    const router = createRouterWrapper();
+    router.push({ name: 'order-create' });
+    await router.isReady();
+
+    const wrapper = await mountPage(router);
+    await new Promise((r) => setTimeout(r, 10));
+
+    await wrapper.find('#order-product').setValue(P1);
+    // stockMin=10 → minimum = 20. Try 15 (below).
+    await wrapper.find('#order-qty').setValue(15);
+    await wrapper.find('form').trigger('submit');
+    await new Promise((r) => setTimeout(r, 10));
+
+    // BR-2 error is shown
+    const banner = wrapper.find('[role="alert"]');
+    expect(banner.exists()).toBe(true);
+    expect(banner.text()).toContain('20');
+    expect(banner.text()).toContain('stock mínimo');
+
+    // orders.create was NOT called
+    expect(mockCreate).not.toHaveBeenCalled();
+    // Navigation did NOT happen
+    expect(router.currentRoute.value.name).toBe('order-create');
+    wrapper.unmount();
+  });
+
+  it('accepts quantity equal to 2*stockMin (BR-2 boundary)', async () => {
+    const router = createRouterWrapper();
+    router.push({ name: 'order-create' });
+    await router.isReady();
+
+    mockCreate.mockResolvedValue({
+      id: O1,
+      productId: P1,
+      productName: 'Coca-Cola',
+      productSku: 'SKU-COCA',
+      quantity: 20,
+      supplierSnapshot: 'CocaCola',
+      fromAlertId: null,
+      status: 'PENDIENTE',
+      rejectionReason: null,
+      createdBy: 'user-1',
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-01T00:00:00.000Z',
+      receivedAt: null,
+    });
+
+    const wrapper = await mountPage(router);
+    await new Promise((r) => setTimeout(r, 10));
+
+    await wrapper.find('#order-product').setValue(P1);
+    await wrapper.find('#order-qty').setValue(20); // exactly 2*10
+    await wrapper.find('form').trigger('submit');
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(mockCreate).toHaveBeenCalledWith({ productId: P1, quantity: 20 });
     expect(router.currentRoute.value.name).toBe('orders-list');
     wrapper.unmount();
   });

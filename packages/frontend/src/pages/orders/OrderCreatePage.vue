@@ -47,6 +47,9 @@ const selectedProduct = computed(() =>
   products.items.find((p) => p.id === selectedProductId.value),
 );
 
+/** BR-2 / RF-04: minimum orderable quantity is 2x the product's stockMin. */
+const minRequiredQuantity = computed(() => (selectedProduct.value?.stockMin ?? 0) * 2);
+
 async function handleSubmit() {
   error.value = '';
   if (!selectedProductId.value) {
@@ -55,6 +58,10 @@ async function handleSubmit() {
   }
   if (!quantity.value || quantity.value <= 0) {
     error.value = 'La cantidad debe ser mayor que cero.';
+    return;
+  }
+  if (selectedProduct.value && quantity.value < minRequiredQuantity.value) {
+    error.value = `La cantidad mínima para este producto es ${minRequiredQuantity.value} unidades (2 veces el stock mínimo = ${selectedProduct.value.stockMin}).`;
     return;
   }
   loading.value = true;
@@ -155,6 +162,14 @@ async function handleSubmit() {
         required
         :min="1"
       />
+      <p
+        v-if="selectedProduct && minRequiredQuantity > 0"
+        id="order-qty-hint"
+        class="text-xs text-text-muted -mt-2"
+        data-testid="order-qty-hint"
+      >
+        Mínimo: {{ minRequiredQuantity }} unidades (política BR-2: 2× stock mínimo).
+      </p>
 
       <div class="flex gap-3 pt-2">
         <Button type="submit" :loading="loading">

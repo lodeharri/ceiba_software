@@ -63,14 +63,14 @@ describe('GetAlert (alerts BC — application)', () => {
     const result = await useCase.execute({ id: ALERT_ID });
 
     // Flat read model: id, productName, productSku, stockAtOpen, stockMin
-    // all live on `result.alert` (not under nested `alert`/`product` keys).
-    expect(result.alert.id).toBe(ALERT_ID);
-    expect(result.alert.status).toBe('ACTIVA');
-    expect(result.alert.resolvedAt).toBeNull();
-    expect(result.alert.productName).toBe('Test Product');
-    expect(result.alert.productSku).toBe('SKU123');
-    expect(result.alert.stockAtOpen).toBe(5);
-    expect(result.alert.stockMin).toBe(10);
+    // all live directly on the result (not under nested `alert`/`product` keys).
+    expect(result.id).toBe(ALERT_ID);
+    expect(result.status).toBe('ACTIVA');
+    expect(result.resolvedAt).toBeNull();
+    expect(result.productName).toBe('Test Product');
+    expect(result.productSku).toBe('SKU123');
+    expect(result.stockAtOpen).toBe(5);
+    expect(result.stockMin).toBe(10);
   });
 
   it('returns flat RESUELTA alert with resolvedAt serialized as ISO string', async () => {
@@ -80,8 +80,8 @@ describe('GetAlert (alerts BC — application)', () => {
 
     const result = await useCase.execute({ id: ALERT_ID });
 
-    expect(result.alert.status).toBe('RESUELTA');
-    expect(result.alert.resolvedAt).toBe('2025-01-16T12:00:00.000Z');
+    expect(result.status).toBe('RESUELTA');
+    expect(result.resolvedAt).toBe('2025-01-16T12:00:00.000Z');
   });
 
   it('throws AlertNotFoundError for unknown id', async () => {
