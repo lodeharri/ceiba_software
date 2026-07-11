@@ -30,9 +30,12 @@ function emitUpdate() {
   emit('update:modelValue', {
     categoryId: categoryId.value || undefined,
     supplier: supplier.value || undefined,
-    hasActiveAlert: hasActiveAlert.value || undefined,
-    minStock: minStock.value,
-    maxStock: maxStock.value,
+    hasActiveAlert: hasActiveAlert.value,
+    // v-model.number yields '' when the input is cleared; coerce to
+    // undefined so the backend ignores the key instead of treating it
+    // as minStock=0 (which would match every product).
+    minStock: minStock.value === '' ? undefined : minStock.value,
+    maxStock: maxStock.value === '' ? undefined : maxStock.value,
   });
 }
 
@@ -42,6 +45,7 @@ function clear() {
   hasActiveAlert.value = false;
   minStock.value = undefined;
   maxStock.value = undefined;
+  emitUpdate();
   emit('search');
 }
 

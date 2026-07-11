@@ -70,6 +70,76 @@ describe('products service', () => {
     });
   });
 
+  it('listProducts serializes supplier filter in query', async () => {
+    const page = { ...emptyEnvelope(), items: [], total: 0 };
+    mockedHttp.mockResolvedValue(page);
+
+    await listProducts({ supplier: 'SnacksCorp' });
+
+    expect(mockedHttp).toHaveBeenCalledWith('/products', {
+      query: { supplier: 'SnacksCorp', page: 1, size: 20 },
+    });
+  });
+
+  it('listProducts serializes hasActiveAlert=false as boolean false (not undefined)', async () => {
+    const page = { ...emptyEnvelope(), items: [], total: 0 };
+    mockedHttp.mockResolvedValue(page);
+
+    await listProducts({ hasActiveAlert: false });
+
+    // ofetch should serialize false as 'false' string in query params
+    expect(mockedHttp).toHaveBeenCalledWith('/products', {
+      query: { hasActiveAlert: false, page: 1, size: 20 },
+    });
+  });
+
+  it('listProducts serializes minStock and maxStock as numbers', async () => {
+    const page = { ...emptyEnvelope(), items: [], total: 0 };
+    mockedHttp.mockResolvedValue(page);
+
+    await listProducts({ minStock: 5, maxStock: 100 });
+
+    expect(mockedHttp).toHaveBeenCalledWith('/products', {
+      query: { minStock: 5, maxStock: 100, page: 1, size: 20 },
+    });
+  });
+
+  it('listProducts omits undefined filter values from query', async () => {
+    const page = { ...emptyEnvelope(), items: [], total: 0 };
+    mockedHttp.mockResolvedValue(page);
+
+    await listProducts({ categoryId: undefined, supplier: undefined });
+
+    expect(mockedHttp).toHaveBeenCalledWith('/products', {
+      query: { page: 1, size: 20 },
+    });
+  });
+
+  it('listProducts combines multiple filters correctly', async () => {
+    const page = { ...emptyEnvelope(), items: [], total: 0 };
+    mockedHttp.mockResolvedValue(page);
+
+    await listProducts({
+      categoryId: C,
+      supplier: 'Test',
+      hasActiveAlert: true,
+      minStock: 10,
+      maxStock: 50,
+    });
+
+    expect(mockedHttp).toHaveBeenCalledWith('/products', {
+      query: {
+        categoryId: C,
+        supplier: 'Test',
+        hasActiveAlert: true,
+        minStock: 10,
+        maxStock: 50,
+        page: 1,
+        size: 20,
+      },
+    });
+  });
+
   it('listProducts propagates a 4xx HTTP error to the caller', async () => {
     const apiError = Object.assign(new Error('Forbidden'), {
       statusCode: 403,

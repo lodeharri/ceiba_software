@@ -145,7 +145,7 @@ function toProps(row: PrismaProductRow): ProductProps {
   };
 }
 
-function buildWhere(
+export function buildWhere(
   f?: ProductFilters,
   productIds?: readonly string[] | undefined,
 ): Parameters<ProductPrisma['product']['findMany']>[0]['where'] {
