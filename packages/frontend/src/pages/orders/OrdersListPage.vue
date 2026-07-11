@@ -8,6 +8,7 @@ import { useOrdersStore } from '@/stores/orders';
 import StatusBadge from '@/components/molecules/StatusBadge.vue';
 import PageHeader from '@/components/molecules/PageHeader.vue';
 import Button from '@/components/atoms/Button.vue';
+import EmptyState from '@/components/molecules/EmptyState.vue';
 
 const orders = useOrdersStore();
 const router = useRouter();
@@ -39,18 +40,21 @@ function formatDate(iso: string): string {
       {{ $t('common.loading') }}
     </div>
 
-    <div v-else-if="orders.items.length === 0" class="text-center text-text-muted py-12">
-      {{ $t('orders.noOrders') }}
+    <div v-else-if="orders.items.length === 0" class="mt-2">
+      <EmptyState :message="$t('empty.orders')">
+        <template #action>
+          <Button size="sm" @click="router.push({ name: 'order-create' })">
+            + {{ $t('orders.newOrder') }}
+          </Button>
+        </template>
+      </EmptyState>
     </div>
 
     <div v-else class="border border-muted rounded-card overflow-hidden bg-card">
       <table class="w-full border-collapse text-sm">
         <thead>
           <tr class="border-b border-muted">
-            <th class="text-left px-4 py-3 text-xs font-medium text-text-muted uppercase">ID</th>
-            <th
-              class="text-left px-4 py-3 text-xs font-medium text-text-muted uppercase hidden md:table-cell"
-            >
+            <th class="text-left px-4 py-3 text-xs font-medium text-text-muted uppercase">
               Producto
             </th>
             <th class="text-right px-4 py-3 text-xs font-medium text-text-muted uppercase">
@@ -59,7 +63,9 @@ function formatDate(iso: string): string {
             <th class="text-center px-4 py-3 text-xs font-medium text-text-muted uppercase">
               Estado
             </th>
-            <th class="text-right px-4 py-3 text-xs font-medium text-text-muted uppercase">
+            <th
+              class="text-right px-4 py-3 text-xs font-medium text-text-muted uppercase hidden md:table-cell"
+            >
               Fecha
             </th>
           </tr>
@@ -72,18 +78,19 @@ function formatDate(iso: string): string {
             style="height: 48px"
             @click="router.push({ name: 'order-detail', params: { id: order.id } })"
           >
-            <td class="px-4 py-3 font-mono text-xs text-text-muted truncate max-w-[80px]">
-              {{ order.id.slice(0, 8) }}
-            </td>
-            <td class="px-4 py-3 text-text truncate hidden md:table-cell">
+            <td class="px-4 py-3 text-text truncate">
               <span class="font-medium">{{ order.productName }}</span>
-              <span class="text-text-muted ml-2 text-xs font-mono">{{ order.productSku }}</span>
+              <span class="block text-xs text-text-muted font-mono mt-0.5">
+                {{ order.productSku }} · #{{ order.id.slice(0, 8) }}
+              </span>
             </td>
-            <td class="px-4 py-3 text-right font-mono text-text">{{ order.quantity }}</td>
+            <td class="px-4 py-3 text-right font-mono text-text font-semibold">
+              {{ order.quantity }}
+            </td>
             <td class="px-4 py-3 text-center">
               <StatusBadge :status="order.status" />
             </td>
-            <td class="px-4 py-3 text-right text-text-muted text-xs">
+            <td class="px-4 py-3 text-right text-text-muted text-xs hidden md:table-cell">
               {{ formatDate(order.createdAt) }}
             </td>
           </tr>

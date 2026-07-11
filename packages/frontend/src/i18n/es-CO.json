@@ -45,6 +45,7 @@
     "username": "Usuario",
     "password": "Contraseña",
     "loginButton": "Entrar",
+    "tagline": "Control de inventario para tu tienda.",
     "loginError": "Credenciales inválidas. Verifica tu usuario y contraseña.",
     "loginSuccess": "Sesión iniciada.",
     "sessionExpired": "Tu sesión expiró. Inicia sesión de nuevo."

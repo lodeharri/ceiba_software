@@ -5,6 +5,7 @@
 import { onMounted, ref } from 'vue';
 import { useAlertsStore } from '@/stores/alerts';
 import AlertCard from '@/components/organisms/AlertCard.vue';
+import EmptyState from '@/components/molecules/EmptyState.vue';
 import PageHeader from '@/components/molecules/PageHeader.vue';
 import type { AlertStatus } from '@mercadoexpress/shared/primitives/alert-status.js';
 
@@ -58,8 +59,11 @@ function setFilter(s: AlertStatus | undefined) {
       {{ $t('common.loading') }}
     </div>
 
-    <div v-else-if="alerts.items.length === 0" class="text-center text-text-muted py-12">
-      {{ statusFilter === 'ACTIVA' ? $t('alerts.noActiveAlerts') : $t('alerts.noAlerts') }}
+    <div v-else-if="alerts.items.length === 0" class="mt-2">
+      <EmptyState
+        :message="statusFilter === 'ACTIVA' ? $t('alerts.noActiveAlerts') : $t('alerts.noAlerts')"
+        :tone="statusFilter === 'ACTIVA' ? 'success' : 'neutral'"
+      />
     </div>
 
     <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">

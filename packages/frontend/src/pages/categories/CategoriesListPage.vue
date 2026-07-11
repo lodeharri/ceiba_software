@@ -6,6 +6,7 @@ import { onMounted, ref } from 'vue';
 import { useCategoriesStore } from '@/stores/categories';
 import PageHeader from '@/components/molecules/PageHeader.vue';
 import Button from '@/components/atoms/Button.vue';
+import EmptyState from '@/components/molecules/EmptyState.vue';
 
 const categories = useCategoriesStore();
 
@@ -112,9 +113,13 @@ function extractMessage(e: unknown): string {
 
     <div
       v-else-if="!categories.loading && categories.items.length === 0 && !categories.error"
-      class="text-center text-text-muted py-12"
+      class="mt-4"
     >
-      {{ $t('categories.noCategories') }}
+      <EmptyState :message="$t('empty.categories')">
+        <template #action>
+          <Button size="sm" @click="openForm"> + {{ $t('categories.createCategory') }} </Button>
+        </template>
+      </EmptyState>
     </div>
 
     <div v-else class="border border-muted rounded-card overflow-hidden bg-card mt-4">
