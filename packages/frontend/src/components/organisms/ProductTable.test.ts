@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ProductTable from './ProductTable.vue';
+import StatusBadge from '@/components/molecules/StatusBadge.vue';
 
 function createWrapper(props?: Record<string, unknown>) {
   return mount(ProductTable, {
@@ -43,6 +44,68 @@ const makeProduct = (overrides: Partial<Record<string, string | number>> = {}) =
     stockMin: number;
     categoryId: string;
   };
+
+describe('ProductTable stock status', () => {
+  // stock === 0 → danger badge shows "Sin stock"
+  it('renders danger badge with "Sin stock" when stock is zero', () => {
+    const wrapper = createWrapper({
+      products: [makeProduct({ stock: 0, stockMin: 5 })],
+    });
+    const badge = wrapper.findComponent(StatusBadge);
+    expect(badge.props('status')).toBe('danger');
+    expect(wrapper.text()).toContain('Sin stock');
+  });
+
+  // 0 < stock <= stockMin → stock_low badge shows "Stock bajo"
+  it('renders stock_low badge when stock is between 1 and stockMin', () => {
+    const wrapper = createWrapper({
+      products: [makeProduct({ stock: 3, stockMin: 5 })],
+    });
+    const badge = wrapper.findComponent(StatusBadge);
+    expect(badge.props('status')).toBe('stock_low');
+    expect(wrapper.text()).toContain('Stock bajo');
+  });
+
+  it('renders stock_low badge when stock equals stockMin', () => {
+    const wrapper = createWrapper({
+      products: [makeProduct({ stock: 5, stockMin: 5 })],
+    });
+    const badge = wrapper.findComponent(StatusBadge);
+    expect(badge.props('status')).toBe('stock_low');
+    expect(wrapper.text()).toContain('Stock bajo');
+  });
+
+  // stockMin < stock <= stockMin * 2 → warning badge (hardcoded "⚠ Advertencia" in StatusBadge)
+  it('renders warning badge when stock is just above stockMin', () => {
+    const wrapper = createWrapper({
+      products: [makeProduct({ stock: 6, stockMin: 5 })],
+    });
+    const badge = wrapper.findComponent(StatusBadge);
+    expect(badge.props('status')).toBe('warning');
+    // StatusBadge hardcodes the warning label as "Advertencia"
+    expect(wrapper.text()).toContain('Advertencia');
+  });
+
+  it('renders warning badge when stock equals stockMin * 2', () => {
+    const wrapper = createWrapper({
+      products: [makeProduct({ stock: 10, stockMin: 5 })],
+    });
+    const badge = wrapper.findComponent(StatusBadge);
+    expect(badge.props('status')).toBe('warning');
+    expect(wrapper.text()).toContain('Advertencia');
+  });
+
+  // stock > stockMin * 2 → ok badge (hardcoded "✓ OK" in StatusBadge)
+  it('renders ok badge when stock is above stockMin * 2', () => {
+    const wrapper = createWrapper({
+      products: [makeProduct({ stock: 11, stockMin: 5 })],
+    });
+    const badge = wrapper.findComponent(StatusBadge);
+    expect(badge.props('status')).toBe('ok');
+    // StatusBadge hardcodes the ok label as "OK"
+    expect(wrapper.text()).toContain('OK');
+  });
+});
 
 describe('ProductTable category display', () => {
   it('shows em-dash when no categories prop is provided', () => {

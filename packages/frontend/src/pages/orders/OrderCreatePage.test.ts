@@ -33,10 +33,39 @@ vi.mock('@/stores/orders', () => ({
 
 vi.mock('@/stores/products', () => ({
   useProductsStore: vi.fn().mockReturnValue({
-    items: [{ id: P1, name: 'Coca-Cola', sku: 'SKU-COCA', stock: 100, supplier: 'CocaCola' }],
+    items: [
+      {
+        id: P1,
+        name: 'Coca-Cola',
+        sku: 'SKU-COCA',
+        stock: 100,
+        supplier: 'CocaCola',
+        stockMin: 10,
+      },
+    ],
     loading: false,
     error: null,
     fetchList: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
+const A1 = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa';
+vi.mock('@/stores/alerts', () => ({
+  useAlertsStore: vi.fn().mockReturnValue({
+    current: null,
+    loading: false,
+    error: null,
+    fetchOne: vi.fn().mockResolvedValue({
+      id: A1,
+      productId: P1,
+      productName: 'Coca-Cola',
+      productSku: 'SKU-COCA',
+      stockAtOpen: 5,
+      stockMin: 10,
+      status: 'ACTIVA',
+      resolvedAt: null,
+      createdAt: '2025-01-01T00:00:00.000Z',
+    }),
   }),
 }));
 
@@ -236,6 +265,93 @@ describe('OrderCreatePage', () => {
     await wrapper.find('form').trigger('submit');
     await new Promise((r) => setTimeout(r, 20));
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  // -------------------------------------------------------------------------
+  // fromAlertId flow (RF-04)
+  // -------------------------------------------------------------------------
+
+  it('with fromAlertId: pre-selects product, locks selector, pre-fills qty=2*stockMin, passes fromAlertId', async () => {
+    const router = createRouterWrapper();
+    router.push({ name: 'order-create', query: { fromAlertId: A1 } });
+    await router.isReady();
+
+    mockCreate.mockResolvedValue({
+      id: O1,
+      productId: P1,
+      productName: 'Coca-Cola',
+      productSku: 'SKU-COCA',
+      quantity: 20,
+      supplierSnapshot: 'CocaCola',
+      fromAlertId: A1,
+      status: 'PENDIENTE',
+      rejectionReason: null,
+      createdBy: 'user-1',
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-01T00:00:00.000Z',
+      receivedAt: null,
+    });
+
+    const wrapper = await mountPage(router);
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Product is pre-selected (not empty default option)
+    expect((wrapper.find('#order-product').element as HTMLSelectElement).value).toBe(P1);
+
+    // Product selector is locked (disabled)
+    expect((wrapper.find('#order-product').element as HTMLSelectElement).disabled).toBe(true);
+
+    // Quantity is pre-filled: stockMin=10 → 2*10=20
+    expect((wrapper.find('#order-qty').element as HTMLInputElement).value).toBe('20');
+
+    // Submit should send fromAlertId to the backend
+    await wrapper.find('form').trigger('submit');
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(mockCreate).toHaveBeenCalledWith({ productId: P1, quantity: 20, fromAlertId: A1 });
+    expect(router.currentRoute.value.name).toBe('orders-list');
+    wrapper.unmount();
+  });
+
+  it('without fromAlertId: product selector is enabled (regression)', async () => {
+    const router = createRouterWrapper();
+    router.push({ name: 'order-create' });
+    await router.isReady();
+
+    mockCreate.mockResolvedValue({
+      id: O1,
+      productId: P1,
+      productName: 'Coca-Cola',
+      productSku: 'SKU-COCA',
+      quantity: 5,
+      supplierSnapshot: 'CocaCola',
+      fromAlertId: null,
+      status: 'PENDIENTE',
+      rejectionReason: null,
+      createdBy: 'user-1',
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-01T00:00:00.000Z',
+      receivedAt: null,
+    });
+
+    const wrapper = await mountPage(router);
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Product selector is NOT disabled
+    expect((wrapper.find('#order-product').element as HTMLSelectElement).disabled).toBe(false);
+
+    // No alert hint is shown
+    expect(wrapper.text()).not.toContain('Producto pre-seleccionado');
+
+    // Happy path still works
+    await wrapper.find('#order-product').setValue(P1);
+    await wrapper.find('#order-qty').setValue(5);
+    await wrapper.find('form').trigger('submit');
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(mockCreate).toHaveBeenCalledWith({ productId: P1, quantity: 5 });
+    expect(router.currentRoute.value.name).toBe('orders-list');
     wrapper.unmount();
   });
 });

@@ -23,15 +23,16 @@ const props = withDefaults(defineProps<Props>(), {
 
 const router = useRouter();
 
-function stockStatus(product: Product): 'ok' | 'warning' | 'danger' {
-  if (product.stock === 0 || product.stock <= product.stockMin) return 'danger';
+function stockStatus(product: Product): 'ok' | 'warning' | 'danger' | 'stock_low' {
+  if (product.stock === 0) return 'danger';
+  if (product.stock <= product.stockMin) return 'stock_low';
   if (product.stock <= product.stockMin * 2) return 'warning';
   return 'ok';
 }
 
 function stockLabel(product: Product): string {
   if (product.stock === 0) return 'Sin stock';
-  if (product.stock <= product.stockMin) return 'Bajo mínimo';
+  if (product.stock <= product.stockMin) return 'Stock bajo';
   if (product.stock <= product.stockMin * 2) return 'Cerca del mínimo';
   return 'Stock OK';
 }

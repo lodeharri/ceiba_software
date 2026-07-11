@@ -9,7 +9,7 @@ import type { AlertReadRepository, AlertReadModel } from '../domain/ports/alert-
 
 interface AlertRow {
   id: string;
-  product_id: string;
+  productId: string;
   status: string;
 }
 
@@ -27,7 +27,7 @@ export class PrismaAlertReadRepository implements AlertReadRepository {
     if (!row) return null;
     return {
       id: row.id,
-      productId: row.product_id,
+      productId: row.productId,
       status: row.status as 'ACTIVA' | 'RESUELTA',
     };
   }

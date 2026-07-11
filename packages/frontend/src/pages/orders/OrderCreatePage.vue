@@ -8,6 +8,7 @@ import { onMounted, ref, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useProductsStore } from '@/stores/products';
 import { useOrdersStore } from '@/stores/orders';
+import { useAlertsStore } from '@/stores/alerts';
 import Input from '@/components/atoms/Input.vue';
 import Button from '@/components/atoms/Button.vue';
 import PageHeader from '@/components/molecules/PageHeader.vue';
@@ -21,13 +22,24 @@ const selectedProductId = ref('');
 const quantity = ref<number | undefined>(undefined);
 const error = ref('');
 const loading = ref(false);
+const productLocked = ref(false);
+const alertRef = ref<ReturnType<typeof useAlertsStore>['current']>(null);
 
 const fromAlertId = computed(() => (route.query.fromAlertId as string) || undefined);
+
+const alerts = useAlertsStore();
 
 onMounted(async () => {
   await products.fetchList({ size: 100 });
   if (route.query.productId) {
     selectedProductId.value = route.query.productId as string;
+  }
+  if (fromAlertId.value) {
+    const alert = await alerts.fetchOne(fromAlertId.value);
+    alertRef.value = alert;
+    selectedProductId.value = alert.productId;
+    quantity.value = Math.max(1, alert.stockMin * 2);
+    productLocked.value = true;
   }
 });
 
@@ -97,6 +109,11 @@ async function handleSubmit() {
         Creando orden desde alerta activa.
       </div>
 
+      <!-- Product locked hint (from alert) -->
+      <div v-if="productLocked && alertRef" class="text-xs text-text-muted">
+        Producto pre-seleccionado desde la alerta #{{ alertRef.id.slice(0, 8) }}
+      </div>
+
       <!-- Product select -->
       <div>
         <label for="order-product" class="block text-sm font-medium text-text mb-1">
@@ -105,7 +122,9 @@ async function handleSubmit() {
         <select
           id="order-product"
           v-model="selectedProductId"
+          :disabled="productLocked"
           class="w-full border border-muted bg-card text-text text-sm px-3 py-2 rounded-atom focus:border-primary focus:ring-2 focus:ring-primary"
+          :class="{ 'opacity-60 cursor-not-allowed': productLocked }"
         >
           <option value="" disabled>Selecciona un producto</option>
           <option v-for="p in products.items" :key="p.id" :value="p.id">

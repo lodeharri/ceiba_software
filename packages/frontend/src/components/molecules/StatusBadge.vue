@@ -25,6 +25,7 @@ const config: Record<
   ok: { variant: 'success', label: 'OK', icon: '✓' },
   warning: { variant: 'warning', label: 'Advertencia', icon: '⚠' },
   danger: { variant: 'danger', label: 'Sin stock', icon: '✕' },
+  stock_low: { variant: 'warning', label: 'Stock bajo', icon: '⚠' },
   // Alert statuses
   ACTIVA: { variant: 'danger', label: 'Activa', icon: '⚠' },
   RESUELTA: { variant: 'success', label: 'Resuelta', icon: '✓' },
