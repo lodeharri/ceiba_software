@@ -192,9 +192,10 @@ describe('products service', () => {
       sku: 'SKU-2',
       name: 'New Product',
       categoryId: C,
-      unitPrice: 1500,
-      minStock: 0,
-      initialStock: 0,
+      price: 1500,
+      stock: 0,
+      stockMin: 1,
+      supplier: 'Test Supplier',
     };
     const result = await createProduct(input);
 
@@ -218,9 +219,10 @@ describe('products service', () => {
         sku: 'SKU-2',
         name: 'New Product',
         categoryId: C,
-        unitPrice: 1500,
-        minStock: 0,
-        initialStock: 0,
+        price: 1500,
+        stock: 0,
+        stockMin: 1,
+        supplier: 'Test Supplier',
       }),
     ).rejects.toBeInstanceOf(InvalidProductsResponseError);
     expect(consoleError).toHaveBeenCalled();

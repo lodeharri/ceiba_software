@@ -33,8 +33,8 @@ function validate(): boolean {
   if (!sku.value.trim()) errors.value.sku = 'El SKU es obligatorio.';
   if (sku.value.length < 6) errors.value.sku = 'El SKU debe tener al menos 6 caracteres.';
   if (!name.value.trim()) errors.value.name = 'El nombre es obligatorio.';
-  if (price.value === undefined || price.value < 0)
-    errors.value.price = 'El precio es obligatorio.';
+  if (price.value === undefined || price.value <= 0)
+    errors.value.price = 'El precio debe ser mayor que cero.';
   if (stock.value === undefined || stock.value < 0) errors.value.stock = 'El stock es obligatorio.';
   if (stockMin.value === undefined || stockMin.value <= 0)
     errors.value.stockMin = 'El stock mínimo debe ser mayor que cero.';
@@ -52,6 +52,7 @@ async function handleSubmit() {
       sku: sku.value.trim(),
       name: name.value.trim(),
       price: price.value!,
+      stock: stock.value ?? 0,
       stockMin: stockMin.value!,
       supplier: supplier.value.trim(),
       categoryId: categoryId.value,

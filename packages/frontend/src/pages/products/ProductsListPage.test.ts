@@ -130,4 +130,67 @@ describe('ProductsListPage', () => {
     // Should search with empty filters
     expect(mockStore.fetchList).toHaveBeenLastCalledWith({});
   });
+
+  // Bug fix: categories error banner should display when fetch fails
+  it('shows categories error banner when categories.error is set', async () => {
+    const { useCategoriesStore } = vi.mocked(await import('@/stores/categories')) as {
+      useCategoriesStore: ReturnType<typeof vi.fn>;
+    };
+    const mockCategoriesStore = useCategoriesStore();
+    mockCategoriesStore.error = 'Error al cargar categorías';
+
+    const wrapper = createWrapper();
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Find the categories error banner by its text content
+    const categoriesError = wrapper
+      .findAll('div[role="alert"]')
+      .find((div) => div.text() === 'Error al cargar categorías');
+
+    expect(categoriesError).toBeDefined();
+  });
+
+  // Bug fix: create button should navigate to product-create route
+  it('+ Nuevo producto button navigates to product-create route', async () => {
+    // Use a shared router with the product-create route defined
+    const router = createRouter({
+      history: createWebHistory(),
+      routes: [
+        { path: '/', redirect: { name: 'products-list' } },
+        {
+          path: '/productos',
+          name: 'products-list',
+          component: { template: '<div>Products</div>' },
+        },
+        {
+          path: '/productos/nuevo',
+          name: 'product-create',
+          component: { template: '<div>Create Product</div>' },
+        },
+      ],
+    });
+
+    const wrapper = mount(ProductsListPage, {
+      global: {
+        plugins: [router],
+        mocks: { $t: (k: string) => k },
+      },
+    });
+
+    await router.isReady();
+
+    // Find and click the create button
+    const createButton = wrapper
+      .findAll('button')
+      .find((btn) => btn.text().includes('products.newProduct'));
+    expect(createButton).toBeDefined();
+
+    await createButton!.trigger('click');
+    // Wait for router navigation to complete
+    await new Promise((r) => setTimeout(r, 50));
+    await router.isReady();
+
+    // Router should have navigated to product-create
+    expect(router.currentRoute.value.name).toBe('product-create');
+  });
 });

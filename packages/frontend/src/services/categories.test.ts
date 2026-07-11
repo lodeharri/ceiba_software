@@ -12,7 +12,8 @@ vi.mock('./http', () => ({
   http: vi.fn(),
 }));
 
-import { listCategories, InvalidCategoriesResponseError } from './categories';
+import { listCategories, createCategory, InvalidCategoriesResponseError } from './categories';
+import { useAuthStore } from '@/stores/auth';
 import { http } from './http';
 
 const mockedHttp = vi.mocked(http);
@@ -76,5 +77,44 @@ describe('categories service', () => {
     await expect(listCategories()).rejects.toBeInstanceOf(InvalidCategoriesResponseError);
     expect(consoleError).toHaveBeenCalled();
     consoleError.mockRestore();
+  });
+
+  it('createCategory POSTs { name } and returns a validated Category', async () => {
+    const created = {
+      id: 'c0000000-0000-4000-8000-000000000001',
+      name: 'Lácteos',
+      createdAt: '2025-06-01T00:00:00.000Z',
+    };
+    mockedHttp.mockResolvedValue(created);
+    useAuthStore(); // required by http onRequest hook
+
+    const result = await createCategory('Lácteos');
+
+    expect(result).toEqual(created);
+    expect(mockedHttp).toHaveBeenCalledWith('/categories', {
+      method: 'POST',
+      body: { name: 'Lácteos' },
+    });
+  });
+
+  it('createCategory throws InvalidCategoriesResponseError when response fails Zod validation', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockedHttp.mockResolvedValue({ id: 'c-uuid' }); // missing name / createdAt
+    useAuthStore();
+
+    await expect(createCategory('New')).rejects.toBeInstanceOf(InvalidCategoriesResponseError);
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it('createCategory propagates a 4xx HTTP error to the caller', async () => {
+    mockedHttp.mockRejectedValue(
+      Object.assign(new Error('Conflict'), {
+        statusCode: 409,
+        data: { code: 'CONFLICT', message: 'Categoría duplicada' },
+      }),
+    );
+
+    await expect(createCategory('Bebidas')).rejects.toMatchObject({ statusCode: 409 });
   });
 });

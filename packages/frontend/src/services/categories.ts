@@ -43,3 +43,24 @@ export async function listCategories(): Promise<Category[]> {
   }
   return parsed.data.items;
 }
+
+export async function createCategory(name: string): Promise<Category> {
+  const raw = await http<unknown>('/categories', {
+    method: 'POST',
+    body: { name },
+  });
+
+  const parsed = categorySchema.safeParse(raw);
+  if (!parsed.success) {
+    console.error('[categories] createCategory response failed Zod validation', {
+      issues: parsed.error.issues,
+      payload: raw,
+    });
+    throw new InvalidCategoriesResponseError(
+      'El servidor devolvió una categoría creada inválida.',
+      raw,
+      parsed.error.issues,
+    );
+  }
+  return parsed.data;
+}

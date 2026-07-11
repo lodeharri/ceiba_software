@@ -12,6 +12,7 @@ import { setActivePinia, createPinia } from 'pinia';
 
 vi.mock('@/services/categories', () => ({
   listCategories: vi.fn(),
+  createCategory: vi.fn(),
 }));
 
 import { useCategoriesStore } from './categories';
@@ -60,5 +61,38 @@ describe('useCategoriesStore', () => {
 
     store.clearError();
     expect(store.error).toBeNull();
+  });
+
+  it('create() prepends the new category to items and increments count', async () => {
+    const store = useCategoriesStore();
+    store.items = [{ id: 'c-1', name: 'Bebidas', createdAt: '2025-01-01T00:00:00.000Z' }];
+
+    const { createCategory } = await import('@/services/categories');
+    const mockedCreate = vi.mocked(createCategory);
+    mockedCreate.mockResolvedValue({
+      id: 'c-new',
+      name: 'Lácteos',
+      createdAt: '2025-06-01T00:00:00.000Z',
+    });
+
+    const result = await store.create('Lácteos');
+
+    expect(result).toMatchObject({ id: 'c-new', name: 'Lácteos' });
+    expect(store.items.map((c) => c.id)).toEqual(['c-new', 'c-1']);
+    expect(store.loading).toBe(false);
+    expect(store.error).toBeNull();
+  });
+
+  it('create() captures error and re-throws so caller can handle it', async () => {
+    const store = useCategoriesStore();
+    const { createCategory } = await import('@/services/categories');
+    const mockedCreate = vi.mocked(createCategory);
+    mockedCreate.mockRejectedValue({
+      data: { code: 'CONFLICT', message: 'Categoría duplicada' },
+    });
+
+    await expect(store.create('Bebidas')).rejects.toBeDefined();
+    expect(store.error).toBe('Categoría duplicada');
+    expect(store.loading).toBe(false);
   });
 });

@@ -7,6 +7,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import * as svc from '@/services/categories';
 import type { Category } from '@mercadoexpress/shared/schemas/categories/category.js';
+import type { createCategory as createCategorySvc } from '@/services/categories';
 
 export const useCategoriesStore = defineStore('categories', () => {
   const items = ref<Category[]>([]);
@@ -26,11 +27,26 @@ export const useCategoriesStore = defineStore('categories', () => {
     }
   }
 
+  async function create(name: string): Promise<Category> {
+    loading.value = true;
+    error.value = null;
+    try {
+      const category = await (svc.createCategory as typeof createCategorySvc)(name);
+      items.value.unshift(category);
+      return category;
+    } catch (e) {
+      error.value = extractMessage(e);
+      throw e;
+    } finally {
+      loading.value = false;
+    }
+  }
+
   function clearError() {
     error.value = null;
   }
 
-  return { items, loading, error, fetchList, clearError };
+  return { items, loading, error, fetchList, create, clearError };
 });
 
 function extractMessage(e: unknown): string {

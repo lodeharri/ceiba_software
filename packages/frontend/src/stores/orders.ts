@@ -144,9 +144,23 @@ export const useOrdersStore = defineStore('orders', () => {
 });
 
 function extractMessage(e: unknown): string {
+  // Backend BC 4xx — ofetch wraps it with { statusCode, data: { code, message } }
   if (typeof e === 'object' && e !== null && 'data' in e) {
     const d = (e as Record<string, unknown>).data as Record<string, string>;
     return d.message ?? 'Error';
+  }
+  // Zod drift — InvalidOrdersResponseError carries the validation issues.
+  if (
+    typeof e === 'object' &&
+    e !== null &&
+    (e as Record<string, unknown>).name === 'InvalidOrdersResponseError'
+  ) {
+    const err = e as { message?: string; issues?: unknown };
+    const issuesCount = Array.isArray(err.issues) ? err.issues.length : 0;
+    return (
+      err.message ??
+      `Error de validación del servidor (${issuesCount} problema${issuesCount !== 1 ? 's' : ''}).`
+    );
   }
   return 'Error';
 }

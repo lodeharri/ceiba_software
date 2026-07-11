@@ -54,8 +54,19 @@ async function handleSubmit() {
     });
     router.push({ name: 'orders-list' });
   } catch (e) {
-    const err = e as { data?: { message?: string } };
-    error.value = err.data?.message ?? 'Error al crear la orden.';
+    const err = e as { data?: { message?: string }; name?: string; message?: string };
+    // Backend BC error: { statusCode, data: { code, message } }
+    if (err.data?.message) {
+      error.value = err.data.message;
+    }
+    // Zod validation drift: InvalidOrdersResponseError
+    else if (err.name === 'InvalidOrdersResponseError') {
+      error.value = err.message ?? 'Error de validación del servidor.';
+    }
+    // Network / unknown
+    else {
+      error.value = 'Error al crear la orden.';
+    }
   } finally {
     loading.value = false;
   }

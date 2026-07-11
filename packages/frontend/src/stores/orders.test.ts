@@ -9,17 +9,31 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 
-vi.mock('@/services/orders', () => ({
-  listOrders: vi.fn(),
-  getOrder: vi.fn(),
-  createOrder: vi.fn(),
-  approveOrder: vi.fn(),
-  rejectOrder: vi.fn(),
-  receiveOrder: vi.fn(),
-}));
+vi.mock('@/services/orders', async () => {
+  class InvalidOrdersResponseErrorMock extends Error {
+    constructor(
+      message: string,
+      readonly payload: unknown,
+      readonly issues: unknown,
+    ) {
+      super(message);
+      this.name = 'InvalidOrdersResponseError';
+    }
+  }
+  return {
+    listOrders: vi.fn(),
+    getOrder: vi.fn(),
+    createOrder: vi.fn(),
+    approveOrder: vi.fn(),
+    rejectOrder: vi.fn(),
+    receiveOrder: vi.fn(),
+    InvalidOrdersResponseError: InvalidOrdersResponseErrorMock,
+  };
+});
 
 import { useOrdersStore } from './orders';
 import * as svc from '@/services/orders';
+import { InvalidOrdersResponseError } from '@/services/orders';
 
 const mockedList = vi.mocked(svc.listOrders);
 const mockedCreate = vi.mocked(svc.createOrder);
@@ -65,13 +79,41 @@ describe('useOrdersStore', () => {
     store.total = 1;
     mockedCreate.mockResolvedValue({ id: 'o-2', status: 'PENDING' } as never);
 
-    const result = await store.create({
-      supplierId: 's-1',
-      lines: [{ productId: 'p-1', quantity: 5 }],
-    });
+    const result = await store.create({ productId: 'p-1', quantity: 5 });
 
     expect(result).toMatchObject({ id: 'o-2' });
     expect(store.items.map((o) => o.id)).toEqual(['o-2', 'o-1']);
     expect(store.total).toBe(2);
+  });
+
+  it('create() sets store.error and re-throws on service BC error', async () => {
+    const store = useOrdersStore();
+    mockedCreate.mockRejectedValue(
+      Object.assign(new Error('Not allowed'), {
+        statusCode: 403,
+        data: { code: 'FORBIDDEN', message: 'No tienes permiso.' },
+      }),
+    );
+
+    await expect(store.create({ productId: 'p-1', quantity: 5 })).rejects.toMatchObject({
+      statusCode: 403,
+    });
+    expect(store.error).toBe('No tienes permiso.');
+  });
+
+  it('create() sets store.error from InvalidOrdersResponseError (Zod drift)', async () => {
+    const store = useOrdersStore();
+    mockedCreate.mockRejectedValue(
+      new InvalidOrdersResponseError(
+        'El servidor devolvió un pedido creado inválido.',
+        { id: 'o-1' },
+        [{ path: ['quantity'], message: 'Required' }],
+      ),
+    );
+
+    await expect(store.create({ productId: 'p-1', quantity: 5 })).rejects.toBeInstanceOf(
+      InvalidOrdersResponseError,
+    );
+    expect(store.error).toBe('El servidor devolvió un pedido creado inválido.');
   });
 });

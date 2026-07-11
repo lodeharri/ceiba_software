@@ -92,9 +92,28 @@ export function parseQuery(qs: string | undefined): {
 export const handler = withRequestContext(
   async (event: APIGatewayProxyEventV2, ctx: RequestContext): Promise<APIGatewayProxyResultV2> => {
     try {
-      const filters = parseQuery(event.rawQueryString);
+      const query = parseQuery(event.rawQueryString);
       const useCase = getProductsBootstrap().listProducts;
-      const page = await useCase.execute(filters);
+      const filters: {
+        categoryId?: string;
+        supplier?: string;
+        hasActiveAlert?: boolean;
+        minStock?: number;
+        maxStock?: number;
+      } = {};
+      if (query.categoryId !== undefined) filters.categoryId = query.categoryId;
+      if (query.supplier !== undefined) filters.supplier = query.supplier;
+      if (query.hasActiveAlert !== undefined) filters.hasActiveAlert = query.hasActiveAlert;
+      if (query.minStock !== undefined) filters.minStock = query.minStock;
+      if (query.maxStock !== undefined) filters.maxStock = query.maxStock;
+      const input: {
+        filters: typeof filters;
+        page?: number;
+        size?: number;
+      } = { filters };
+      if (query.page !== undefined) input.page = query.page;
+      if (query.size !== undefined) input.size = query.size;
+      const page = await useCase.execute(input);
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json', 'X-Request-Id': ctx.requestId },

@@ -41,13 +41,22 @@ function goToCreate() {
     <FilterStrip v-model="filters" :categories="categories.items" @search="handleSearch" />
 
     <div class="mt-4">
-      <!-- Error banner -->
+      <!-- Products error banner -->
       <div
         v-if="products.error"
         class="mb-4 px-4 py-3 bg-danger/10 border border-danger text-danger text-sm rounded-card"
         role="alert"
       >
         {{ products.error }}
+      </div>
+
+      <!-- Categories error banner -->
+      <div
+        v-if="categories.error"
+        class="mb-4 px-4 py-3 bg-danger/10 border border-danger text-danger text-sm rounded-card"
+        role="alert"
+      >
+        {{ categories.error }}
       </div>
 
       <ProductTable :products="products.items" :loading="products.loading" />

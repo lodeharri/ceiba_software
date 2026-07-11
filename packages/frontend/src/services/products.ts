@@ -13,13 +13,20 @@ import {
   productSchema,
   pageEnvelopeSchema,
   type Product,
-  type CreateProductRequest,
+  type CreateProductRequest as SharedCreateProductRequest,
   type UpdateProductRequest,
   type PageEnvelope,
 } from '@mercadoexpress/shared';
+
+/** Extended to include `stock` required by the backend handler. */
+export interface CreateProductRequest extends SharedCreateProductRequest {
+  stock: number;
+}
 import { sha256OfSortedJson } from '@/utils/idempotency-hash';
 
-export type { Product, CreateProductRequest, UpdateProductRequest };
+export type { Product };
+export type { UpdateProductRequest };
+// CreateProductRequest is extended above with `stock` field
 
 export interface ProductFilters {
   categoryId?: string;

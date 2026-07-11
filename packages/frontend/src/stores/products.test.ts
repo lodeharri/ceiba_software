@@ -70,9 +70,10 @@ describe('useProductsStore', () => {
       sku: 'SKU-2',
       name: 'New',
       categoryId: 'c-1',
-      unitPrice: 1.5,
-      minStock: 0,
-      initialStock: 0,
+      price: 1500,
+      stock: 0,
+      stockMin: 1,
+      supplier: 'Test Supplier',
     });
 
     expect(result).toMatchObject({ id: 'p-2' });

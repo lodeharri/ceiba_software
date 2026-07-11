@@ -95,7 +95,7 @@ const hasFilters = computed(
           v-model="supplier"
           type="text"
           class="border border-muted bg-card text-text text-sm px-3 py-2 rounded-atom focus:border-primary focus:ring-2 focus:ring-primary focus:ring-offset-1 placeholder:text-text-muted transition-all duration-hover"
-          :placeholder="$t('products.filterSupplier')"
+          :placeholder="$t('products.filterSupplierPlaceholder')"
           @keyup.enter="handleSearch"
         />
       </div>
