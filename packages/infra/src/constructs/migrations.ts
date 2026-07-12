@@ -138,10 +138,12 @@ export class MigrationsCustomResource extends Construct {
         },
         afterBundling(_inputDir: string, outputDir: string): string[] {
           return [
-            // Copy the Prisma schema and seed into the bundle. The schema used at
-            // runtime is the one copied here; the patched temp schema is discarded.
+            // Copy the Prisma schema and seed into the bundle. Use the patched
+            // temp schema (outputDir/.schema.prisma) so the `output` path resolves
+            // correctly at Lambda runtime (/var/task/node_modules/...). The original
+            // schema has a pnpm-store path that doesn't exist in the Lambda bundle.
             `mkdir -p "${outputDir}/backend/prisma"`,
-            `cp "${prismaSourceDir}/schema.prisma" "${outputDir}/backend/prisma/"`,
+            `cp "${outputDir}/.schema.prisma" "${outputDir}/backend/prisma/schema.prisma"`,
             `cp "${prismaSourceDir}/seed.ts" "${outputDir}/backend/prisma/"`,
           ];
         },
