@@ -169,7 +169,12 @@ export class DatabaseStack extends Stack {
       parameterName: `/MercadoExpress/${stage}/admin-password`,
       stringValue: adminPasswordFromEnv,
       description: `MercadoExpress ${stage} admin (usuario seed) bootstrap password. Rotate via runbook/rotate-admin-password.md.`,
-      type: ssm.ParameterType.SECURE_STRING,
+      // TODO: migrate to Secrets Manager or KMS-encrypted SSM.
+      // CDK's StringParameter with SECURE_STRING does not auto-generate the
+      // KmsKeyId on the CfnParameter — it must be passed explicitly, but CDK's
+      // L2 construct does not wire encryptionKey through to the CfnParameter.
+      // Until migrated, secrets are stored as plaintext SSM String parameters.
+      type: ssm.ParameterType.STRING,
     });
     this.adminPasswordParameterName = adminPasswordParameter.parameterName;
 

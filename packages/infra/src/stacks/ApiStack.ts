@@ -255,7 +255,11 @@ export class ApiStack extends Stack {
           parameterName: `/MercadoExpress/${stage}/jwt-secret`,
           stringValue: jwtSecretFromEnv,
           description: `MercadoExpress ${stage} JWT secret (HS256). Replace via the rotate-admin-password runbook.`,
-          type: ssm.ParameterType.SECURE_STRING,
+          // TODO: migrate to Secrets Manager or KMS-encrypted SSM.
+          // CDK's StringParameter with SECURE_STRING does not auto-generate the
+          // KmsKeyId on the CfnParameter — it must be passed explicitly, but CDK's
+          // L2 construct does not wire encryptionKey through to the CfnParameter.
+          type: ssm.ParameterType.STRING,
         });
     const jwtSecretPrevious = isPlainEnvJwt
       ? null
@@ -263,7 +267,11 @@ export class ApiStack extends Stack {
           parameterName: `/MercadoExpress/${stage}/jwt-secret-previous`,
           stringValue: jwtSecretPreviousFromEnv,
           description: `MercadoExpress ${stage} JWT previous secret (HS256) — used during the rotation overlap window.`,
-          type: ssm.ParameterType.SECURE_STRING,
+          // TODO: migrate to Secrets Manager or KMS-encrypted SSM.
+          // CDK's StringParameter with SECURE_STRING does not auto-generate the
+          // KmsKeyId on the CfnParameter — it must be passed explicitly, but CDK's
+          // L2 construct does not wire encryptionKey through to the CfnParameter.
+          type: ssm.ParameterType.STRING,
         });
 
     const jwtSource: JwtSource =
