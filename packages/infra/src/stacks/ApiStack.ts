@@ -238,11 +238,19 @@ export class ApiStack extends Stack {
       databaseSource.kind === 'plain-env' ? databaseSource.databaseUrl : databaseSource.secretArn;
 
     const isPlainEnvJwt = explicitJwtSource?.kind === 'plain-env';
+    const jwtSecretFromEnv =
+      process.env.JWT_SECRET && process.env.JWT_SECRET.length > 0
+        ? process.env.JWT_SECRET
+        : 'placeholder-replaced-by-ops';
+    const jwtSecretPreviousFromEnv =
+      process.env.JWT_SECRET_PREVIOUS && process.env.JWT_SECRET_PREVIOUS.length > 0
+        ? process.env.JWT_SECRET_PREVIOUS
+        : 'placeholder-empty-on-first-deploy';
     const jwtSecret = isPlainEnvJwt
       ? null
       : new ssm.StringParameter(this, 'JwtSecret', {
           parameterName: `/MercadoExpress/${stage}/jwt-secret`,
-          stringValue: 'placeholder-replaced-by-ops',
+          stringValue: jwtSecretFromEnv,
           description: `MercadoExpress ${stage} JWT secret (HS256). Replace via the rotate-admin-password runbook.`,
           type: ssm.ParameterType.SECURE_STRING,
         });
@@ -250,7 +258,7 @@ export class ApiStack extends Stack {
       ? null
       : new ssm.StringParameter(this, 'JwtSecretPrevious', {
           parameterName: `/MercadoExpress/${stage}/jwt-secret-previous`,
-          stringValue: 'placeholder-empty-on-first-deploy',
+          stringValue: jwtSecretPreviousFromEnv,
           description: `MercadoExpress ${stage} JWT previous secret (HS256) — used during the rotation overlap window.`,
           type: ssm.ParameterType.SECURE_STRING,
         });

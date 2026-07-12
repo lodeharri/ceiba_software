@@ -1,5 +1,11 @@
 #!/usr/bin/env node
 /**
+ * Loads .env.dev from the repo root before any CDK or config import.
+ * @see ../env.ts
+ */
+import './env.js';
+
+/**
  * CDK app entry (PR 1 + PR 2, tasks.md §2 PR 1 + §2 PR 2).
  *
  * PR 2 changes (design.md §3.10):

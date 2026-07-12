@@ -155,15 +155,19 @@ export class DatabaseStack extends Stack {
     Tags.of(database).add('ExtensionVector', 'pgvector');
 
     // Admin bootstrap password — stored as an SSM SecureString (per
-    // PR 1 review BLOCKER C3). Initial value is a placeholder; the
-    // operations runbook `runbook/rotate-admin-password.md` rotates real
-    // passwords in via `aws ssm put-parameter`. The migrations Lambda
-    // reads this parameter via `ssm.StringParameter.valueForString
-    // Parameter(...)` and the PR 2a seed bcrypt-hashes it into the
-    // `users` table.
+    // PR 1 review BLOCKER C3). Initial value falls back to a placeholder
+    // if ADMIN_PASSWORD env var is missing; the operations runbook
+    // `runbook/rotate-admin-password.md` rotates real passwords in via
+    // `aws ssm put-parameter`. The migrations Lambda reads this parameter
+    // via `ssm.StringParameter.valueForStringParameter(...)` and the PR 2a
+    // seed bcrypt-hashes it into the `users` table.
+    const adminPasswordFromEnv =
+      process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD.length > 0
+        ? process.env.ADMIN_PASSWORD
+        : 'placeholder-replaced-by-ops';
     const adminPasswordParameter = new ssm.StringParameter(this, 'AdminPasswordParameter', {
       parameterName: `/MercadoExpress/${stage}/admin-password`,
-      stringValue: 'placeholder-replaced-by-ops',
+      stringValue: adminPasswordFromEnv,
       description: `MercadoExpress ${stage} admin (usuario seed) bootstrap password. Rotate via runbook/rotate-admin-password.md.`,
       type: ssm.ParameterType.SECURE_STRING,
     });
