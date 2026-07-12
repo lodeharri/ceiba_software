@@ -27,12 +27,19 @@ const THIS_DIR: string =
   typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
 // Resolve the Prisma schema + seed paths.
 // In the Lambda runtime, __dirname = /var/task (esbuild output root). The
-// bundling.commandHooks.afterBundling in migrations.ts copies
-// schema.prisma and seed.ts into /var/task/backend/prisma/ at bundle time.
-// Resolve relative to THIS_DIR so both test (source tree) and production
-// (Lambda runtime) find the files at the same relative location.
+// bundling.commandHooks.beforeBundling installs prisma + @prisma/client into
+// /var/task/node_modules/, and afterBundling copies schema.prisma and seed.ts
+// into /var/task/backend/prisma/.
 const PRISMA_SCHEMA_PATH = path.resolve(THIS_DIR, 'backend/prisma/schema.prisma');
 const PRISMA_SEED_PATH = path.resolve(THIS_DIR, 'backend/prisma/seed.ts');
+
+// DEFINITIVE FIX — invoke the bundled prisma CLI directly instead of `npx`.
+// The Lambda is in PRIVATE_ISOLATED subnets; npx would try to reach
+// registry.npmjs.org and fail. Instead, node_modules/prisma/build/index.js
+// is installed at synth time by beforeBundling in migrations.ts.
+// We invoke it with `node` so shebang/pATH issues don't apply.
+const PRISMA_CLI = path.resolve(THIS_DIR, 'node_modules/prisma/build/index.js');
+const TSX_CLI = path.resolve(THIS_DIR, 'node_modules/tsx/dist/cli.mjs');
 
 interface CloudFormationResponse {
   Status: 'SUCCESS' | 'FAILED';
@@ -115,8 +122,8 @@ export const handler = async (
 
   try {
     const migrate = runCommand(
-      'npx',
-      ['prisma', 'migrate', 'deploy', '--schema', PRISMA_SCHEMA_PATH],
+      process.execPath,
+      [PRISMA_CLI, 'migrate', 'deploy', '--schema', PRISMA_SCHEMA_PATH],
       env,
     );
     if (!migrate.ok) {
@@ -129,7 +136,7 @@ export const handler = async (
 
     // eslint-disable-next-line no-console
     console.log(JSON.stringify({ msg: 'running prisma seed' }));
-    const seed = runCommand('npx', ['tsx', PRISMA_SEED_PATH], env);
+    const seed = runCommand(process.execPath, [TSX_CLI, PRISMA_SEED_PATH], env);
     if (!seed.ok) {
       const reason = `prisma seed failed: ${seed.stderr}`;
 

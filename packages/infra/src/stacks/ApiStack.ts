@@ -248,38 +248,26 @@ export class ApiStack extends Stack {
         : (() => {
             // CDK's Fn.join signature is typed `string[]` but accepts IResolvable tokens
             // at runtime. Suppress lint for the local array cast.
+
+            const dbSecret = secretsmanager.Secret.fromSecretCompleteArn(
+              this,
+              'DbSecretRef',
+              databaseSource.secretArn,
+            );
+            // CDK's Fn.join signature is typed `string[]` but accepts IResolvable tokens
+            // at runtime. Suppress lint for the local array cast.
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const urlParts: any[] = [
               'postgresql://',
-              secretsmanager.Secret.fromSecretCompleteArn(
-                this,
-                'DbSecretRef',
-                databaseSource.secretArn,
-              ).secretValueFromJson('username'),
+              dbSecret.secretValueFromJson('username'),
               ':',
-              secretsmanager.Secret.fromSecretCompleteArn(
-                this,
-                'DbSecretRef',
-                databaseSource.secretArn,
-              ).secretValueFromJson('password'),
+              dbSecret.secretValueFromJson('password'),
               '@',
-              secretsmanager.Secret.fromSecretCompleteArn(
-                this,
-                'DbSecretRef',
-                databaseSource.secretArn,
-              ).secretValueFromJson('host'),
+              dbSecret.secretValueFromJson('host'),
               ':',
-              secretsmanager.Secret.fromSecretCompleteArn(
-                this,
-                'DbSecretRef',
-                databaseSource.secretArn,
-              ).secretValueFromJson('port'),
+              dbSecret.secretValueFromJson('port'),
               '/',
-              secretsmanager.Secret.fromSecretCompleteArn(
-                this,
-                'DbSecretRef',
-                databaseSource.secretArn,
-              ).secretValueFromJson('dbname'),
+              dbSecret.secretValueFromJson('dbname'),
             ];
             return Fn.join('', urlParts);
           })();

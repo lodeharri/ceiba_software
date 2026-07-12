@@ -87,20 +87,63 @@ export class MigrationsCustomResource extends Construct {
     // where packages/backend/prisma/ lives.
     const prismaSourceDir = path.resolve(thisDir, '..', '..', '..', '..', 'backend', 'prisma');
 
-    // Bug B fix: after esbuild bundles the Lambda handler, copy the
-    // prisma schema and seed into the output so migrations-lambda.ts
-    // can find them at /var/task/backend/prisma/<file>.
+    /**
+     * DEFINITIVE FIX — self-contained Lambda bundle.
+     *
+     * The Lambda lives in PRIVATE_ISOLATED subnets with no internet access.
+     * Previously it called `npx prisma` and `npx tsx` at runtime, which requires
+     * reaching registry.npmjs.org — impossible in this VPC. Additionally, `npx`
+     * would download the latest Prisma (7.x), incompatible with Node 20.
+     *
+     * Solution: install prisma + @prisma/client + tsx into the bundle at CDK
+     * synth time. The CDK bundling Docker container runs linux/amd64, so engine
+     * binaries are built for the Lambda runtime platform (rhel-openssl-3.0.x).
+     *
+     * We also run `prisma generate` with a schema that has the output path
+     * pointing to `node_modules/@prisma/client/.prisma/client` — a location
+     * Node can resolve at Lambda runtime. The original schema.prisma uses a
+     * pnpm-store path that only works in the dev environment.
+     *
+     * See: migrations-lambda.ts for the runtime-side changes (no more npx).
+     */
+    const PRISMA_VERSION = '5.22.0';
+    const TSX_VERSION = '4.19.1';
+
     const bundling: BundlingOptions = {
       commandHooks: {
+        beforeBundling(_inputDir: string, outputDir: string): string[] {
+          const schemaIn = `${prismaSourceDir}/schema.prisma`;
+          const schemaTmp = `${outputDir}/.schema.prisma`;
+          return [
+            // Install prisma CLI, @prisma/client (postinstall runs prisma generate),
+            // and tsx into the Lambda's node_modules. --ignore-scripts on prisma
+            // avoids double-generate; we run it ourselves below with the right output path.
+            `npm install --prefix "${outputDir}" --no-save --no-package-lock --ignore-scripts \
+              "prisma@${PRISMA_VERSION}" \
+              "@prisma/client@${PRISMA_VERSION}" \
+              "tsx@${TSX_VERSION}"`,
+
+            // Copy the schema and patch its output path so Node can find the
+            // generated client at Lambda runtime (node_modules/@prisma/client/.prisma/client).
+            // Original: ../../../node_modules/.pnpm/@prisma+client@5.22.0_.../node_modules/.prisma/client
+            // Patched:  ../../node_modules/@prisma/client/.prisma/client  (relative to node_modules/@prisma/client/)
+            `cp "${schemaIn}" "${schemaTmp}"`,
+            `sed -i 's|output = ".*"|output = "../../node_modules/@prisma/client/.prisma/client"|' "${schemaTmp}"`,
+
+            // Run prisma generate to create the typed client with the Lambda-compatible output path.
+            // HOME=/tmp avoids "cannot create /home/sbx_user1051/.cache" errors.
+            `HOME=/tmp node "${outputDir}/node_modules/prisma/build/index.js" generate \
+              --schema="${schemaTmp}"`,
+          ];
+        },
         afterBundling(_inputDir: string, outputDir: string): string[] {
           return [
+            // Copy the Prisma schema and seed into the bundle. The schema used at
+            // runtime is the one copied here; the patched temp schema is discarded.
             `mkdir -p "${outputDir}/backend/prisma"`,
             `cp "${prismaSourceDir}/schema.prisma" "${outputDir}/backend/prisma/"`,
             `cp "${prismaSourceDir}/seed.ts" "${outputDir}/backend/prisma/"`,
           ];
-        },
-        beforeBundling(): string[] {
-          return [];
         },
         beforeInstall(): string[] {
           return [];
