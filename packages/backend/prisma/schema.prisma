@@ -40,7 +40,8 @@ updatedAt       DateTime   @default(now()) @map("updated_at") @db.Timestamptz(6)
 }
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
   // pnpm hoists @prisma/client into the store and symlinks it from each
   // workspace. The @prisma/client entrypoint does `require('.prisma/client/default')`
   // — note the missing `./` — which Node interprets as a MODULE NAME

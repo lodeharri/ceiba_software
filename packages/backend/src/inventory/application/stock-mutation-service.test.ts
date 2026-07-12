@@ -33,20 +33,27 @@ function createStubPrisma() {
         }),
         stockMovement: {
           create: vi.fn(async (args: unknown) => {
+            // Prisma's $transaction proxy returns the created row,
+            // not the { data } wrapper. The stub is missing the
+            // unwrap, which is why production code (which reads
+            // `movement.id`, `movement.productId`, …) sees `undefined`.
+            const data = (args as { data: Record<string, unknown> }).data;
             txMovements.push(args);
-            return args;
+            return data;
           }),
         },
         product: {
           update: vi.fn(async (args: unknown) => {
+            const data = (args as { data: Record<string, unknown> }).data;
             txProducts.push(args);
-            return args;
+            return data;
           }),
         },
         alert: {
           create: vi.fn(async (args: unknown) => {
+            const data = (args as { data: Record<string, unknown> }).data;
             txAlerts.push(args);
-            return args;
+            return data;
           }),
           findFirst: vi.fn(async () => null),
         },

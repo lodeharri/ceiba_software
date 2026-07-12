@@ -17,6 +17,10 @@ import type {
   Context as LambdaContext,
 } from 'aws-lambda';
 
+import { verifyJwt } from '../jwt-middleware.js';
+import { UnauthorizedError } from '../errors/typed-errors.js';
+import { ErrorCode } from '@mercadoexpress/shared';
+
 import { handler as recordMovement } from '../../inventory/interface/handlers/record-movement.js';
 import { handler as listMovements } from '../../inventory/interface/handlers/list-movements.js';
 
@@ -31,11 +35,22 @@ type PerRouteHandler = (
   callback: (...args: unknown[]) => void,
 ) => Promise<APIGatewayProxyResultV2>;
 
+function extractBearer(event: APIGatewayProxyEventV2): string {
+  const h = event.headers;
+  const raw = (h?.['authorization'] ?? h?.['Authorization']) as string | undefined;
+  if (!raw || !raw.startsWith('Bearer ')) {
+    throw new UnauthorizedError(ErrorCode.INVALID_TOKEN, 'Missing Bearer token');
+  }
+  return raw.slice('Bearer '.length).trim();
+}
+
 export const handler = async (
   event: APIGatewayProxyEventV2,
   lambdaCtx: LambdaContext,
   callback: (...args: unknown[]) => void,
 ): Promise<APIGatewayProxyResultV2> => {
+  const token = extractBearer(event);
+  await verifyJwt(token);
   const key = event.routeKey ?? '';
   const route = (ROUTES as Record<string, PerRouteHandler | undefined>)[key];
   if (!route) {

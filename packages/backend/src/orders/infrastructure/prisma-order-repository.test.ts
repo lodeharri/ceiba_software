@@ -90,8 +90,11 @@ describe('PrismaOrderRepository', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     });
-    expect(capturedData['product_id']).toBe(P);
-    expect(capturedData['supplier_snapshot']).toBe('SnacksCorp');
+    // Prisma receives the camelCase JS keys (productId, supplierSnapshot)
+    // and translates them to the @map'd snake_case columns in SQL only.
+    // The `data` argument the callback sees retains the camelCase shape.
+    expect(capturedData['productId']).toBe(P);
+    expect(capturedData['supplierSnapshot']).toBe('SnacksCorp');
     expect(capturedData['status']).toBe('PENDIENTE');
   });
 
@@ -151,7 +154,7 @@ describe('PrismaOrderRepository', () => {
     };
     const repo = new PrismaOrderRepository(mockPrisma);
     await repo.list({ page: 1, size: 20 });
-    expect(capturedOrderBy).toBe(JSON.stringify({ created_at: 'desc' }));
+    expect(capturedOrderBy).toBe(JSON.stringify({ createdAt: 'desc' }));
   });
 
   it('updateStatus: transitions to RECHAZADA with reason', async () => {
