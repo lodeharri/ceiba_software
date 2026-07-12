@@ -81,7 +81,6 @@ export const handler = withRequestContext(
           ...result.order,
           stockAfter: result.stockAfter,
           closedAlertId: result.closedAlertId,
-          requestId: ctx.requestId,
         }),
       };
     } catch (err) {

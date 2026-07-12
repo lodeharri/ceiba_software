@@ -83,10 +83,7 @@ export const handler = withRequestContext(
       return {
         statusCode: 201,
         headers: { 'Content-Type': 'application/json', 'X-Request-Id': ctx.requestId },
-        body: JSON.stringify({
-          ...result,
-          requestId: ctx.requestId,
-        }),
+        body: JSON.stringify(result),
       };
     } catch (err) {
       if (err instanceof ValidationError) {
