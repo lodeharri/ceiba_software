@@ -57,13 +57,15 @@ Don't duplicate it here — this README links, not redefines.
 - pnpm 9+
 - Docker + Docker Compose v2
 
-### Quickstart (one command from a fresh clone)
+### Quickstart (three lines from a fresh clone)
 
 ```bash
 pnpm install
-pnpm setup     # bootstraps env, installs deps, brings up postgres + localstack, runs migrations + seed
-pnpm dev       # starts dev-server (api :3001) + Vite (web :5173) concurrently
+pnpm setup     # copies .env.dev, brings up docker compose (postgres + localstack + frontend), runs migrations + seed
+pnpm dev       # env:bootstrap (no-op if .env.dev exists) + concurrently: docker compose up + dev-server (:3001) + Vite (:5173 or :5174)
 ```
+
+`pnpm setup` is a one-time bootstrap. After it, every dev session starts with just `pnpm dev`. The new `pnpm env:bootstrap` script (run automatically by `pnpm dev`) copies `.env.dev.example` → `.env.dev` if missing, so a fresh clone with no `.env.dev` still works.
 
 After `pnpm dev` is running:
 
@@ -74,6 +76,10 @@ After `pnpm dev` is running:
 
 ### What `pnpm setup` does
 
+`pnpm dev` auto-runs `env:bootstrap` first, so you do NOT need to run `pnpm setup` for the env file.
+
+`pnpm setup` (manual) is still available and:
+
 1. Copies `.env.dev.example` to `.env.dev` if missing (then **you must edit `.env.dev`** to set `JWT_SECRET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`).
 2. Brings up postgres + localstack via Docker Compose.
 3. Runs Prisma migrations.
@@ -83,8 +89,9 @@ After `pnpm dev` is running:
 
 - **`pnpm setup` fails at seed step**: re-run `pnpm setup` — it is idempotent. If persistent, `docker compose -f docker-compose.dev.yml down -v && pnpm setup` resets state.
 - **`pnpm dev` fails with `DATABASE_URL not set`**: you forgot to edit `.env.dev`. Open it and set at least `JWT_SECRET=...`.
+- **Browser shows stale CORS / preflight error after env change**: run `pnpm dev:rebuild` to re-bake the frontend bundle with the current `.env.development`, then hard-refresh the browser. The dev-server's preflight `Access-Control-Max-Age` is 86400s, so cached preflight may be stale for up to 24 hours.
 - **Port conflicts on 3001 / 4566 / 5173 / 5432**: see `docs/LOCAL-DEV.md` troubleshooting.
-- **Reset everything**: `pnpm dev:down -v && pnpm setup`.
+- **Reset everything**: `pnpm dev:reset && pnpm db:migrate && pnpm db:seed`.
 
 ### Full documentation
 
@@ -92,19 +99,24 @@ See [docs/LOCAL-DEV.md](docs/LOCAL-DEV.md) for the detailed local development gu
 
 ## Scripts
 
-| Script                 | What it does                                                  |
-| ---------------------- | ------------------------------------------------------------- |
-| `pnpm install`         | install workspace dependencies. `--frozen-lockfile` in CI.    |
-| `pnpm -w vitest run`   | run every package's tests (workspace mode).                   |
-| `pnpm -w vitest`       | same, in watch mode.                                          |
-| `pnpm -r tsc --noEmit` | type-check every package.                                     |
-| `pnpm lint`            | run ESLint across the workspace.                              |
-| `pnpm format`          | format every file with Prettier.                              |
-| `pnpm format:check`    | dry-run Prettier (CI mode).                                   |
-| `pnpm db:migrate`      | run `prisma migrate deploy` against `DATABASE_URL`.           |
-| `pnpm db:seed`         | run `tsx prisma/seed.ts` (admin user + reference data).       |
-| `pnpm dev:backend`     | backend dev loop (vitest --watch for now; `sam local` later). |
-| `pnpm dev:frontend`    | Vite dev server on port 5173.                                 |
+| Script                 | What it does                                                                                                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm install`         | install workspace dependencies. `--frozen-lockfile` in CI.                                                                                                                           |
+| `pnpm -w vitest run`   | run every package's tests (workspace mode).                                                                                                                                          |
+| `pnpm -w vitest`       | same, in watch mode.                                                                                                                                                                 |
+| `pnpm -r tsc --noEmit` | type-check every package.                                                                                                                                                            |
+| `pnpm lint`            | run ESLint across the workspace.                                                                                                                                                     |
+| `pnpm format`          | format every file with Prettier.                                                                                                                                                     |
+| `pnpm format:check`    | dry-run Prettier (CI mode).                                                                                                                                                          |
+| `pnpm db:migrate`      | run `prisma migrate deploy` against `DATABASE_URL`.                                                                                                                                  |
+| `pnpm db:seed`         | run `tsx prisma/seed.ts` (admin user + reference data).                                                                                                                              |
+| `pnpm env:bootstrap`   | copy `.env.dev.example` → `.env.dev` if missing (idempotent; safe on every `pnpm dev`).                                                                                              |
+| `pnpm dev`             | run `env:bootstrap` then bring up docker compose + dev-server (`:3001`) + Vite (`:5173`/`:5174`) concurrently.                                                                       |
+| `pnpm dev:up`          | `docker compose --env-file .env.dev up -d` (loads `.env.dev` automatically; no shell `source` needed).                                                                               |
+| `pnpm dev:rebuild`     | `docker compose --env-file .env.dev build --no-cache` — rebuild frontend image without cached layers. Run after changing `packages/frontend/Dockerfile` or `.env.development`.       |
+| `pnpm dev:reset`       | `docker compose --env-file .env.dev down -v` — stop containers AND delete volumes (full wipe of postgres + localstack state). Requires `pnpm db:migrate && pnpm db:seed` afterwards. |
+| `pnpm dev:backend`     | backend dev loop (vitest --watch for now; `sam local` later).                                                                                                                        |
+| `pnpm dev:frontend`    | Vite dev server on port 5173.                                                                                                                                                        |
 
 ## Conventions
 

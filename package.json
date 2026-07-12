@@ -31,11 +31,13 @@
     "dev:frontend": "pnpm --filter frontend dev",
     "dev:api": "tsx scripts/dev-server.ts",
     "dev:web": "pnpm --filter frontend dev",
-    "dev:up": "docker compose -f docker-compose.dev.yml up -d",
-    "dev:down": "docker compose -f docker-compose.dev.yml down",
-    "dev:reset": "docker compose -f docker-compose.dev.yml down -v && rm -rf packages/frontend/node_modules/.vite",
-    "dev": "concurrently -k -n db,api,web -c blue,green,magenta 'pnpm dev:up' 'pnpm dev:api' 'pnpm dev:web'",
+    "dev:up": "docker compose --env-file .env.dev -f docker-compose.dev.yml up -d",
+    "dev:down": "docker compose --env-file .env.dev -f docker-compose.dev.yml down",
+    "dev:rebuild": "docker compose --env-file .env.dev -f docker-compose.dev.yml build --no-cache",
+    "dev:reset": "docker compose --env-file .env.dev -f docker-compose.dev.yml down -v",
+    "dev": "pnpm env:bootstrap && concurrently -k -n db,api,web -c blue,green,magenta 'pnpm dev:up' 'pnpm dev:api' 'pnpm dev:web'",
     "setup": "tsx scripts/setup.ts",
+    "env:bootstrap": "tsx scripts/ensure-env.ts",
     "prepare": "husky"
   },
   "devDependencies": {
