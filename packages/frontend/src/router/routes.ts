@@ -1,9 +1,16 @@
 import type { RouteRecordRaw } from 'vue-router';
+import { useAuthStore } from '@/stores/auth';
 
 /**
  * Route records — MercadoExpress SPA.
  * Lazy-loaded for code-splitting (design.md §7.4).
  * layout: 'dashboard' → DashboardLayout; 'auth' → AuthLayout.
+ *
+ * Root `/` uses an auth-aware function redirect: authenticated users go
+ * straight to /productos (dashboard landing), unauthenticated users land
+ * on the clean /login URL without the `?redirect=/productos` query
+ * string that previously polluted the address bar when the SPA was
+ * entered via the bare host.
  */
 export const routes: RouteRecordRaw[] = [
   {
@@ -14,7 +21,7 @@ export const routes: RouteRecordRaw[] = [
   },
   {
     path: '/',
-    redirect: { name: 'products-list' },
+    redirect: () => (useAuthStore().token ? { name: 'products-list' } : { name: 'login' }),
   },
   {
     path: '/productos',
