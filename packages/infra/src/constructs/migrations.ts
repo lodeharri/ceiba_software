@@ -23,6 +23,7 @@ import * as path from 'node:path';
 import * as url from 'node:url';
 import type { Stage } from '../config.js';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import type { BundlingOptions } from 'aws-cdk-lib/aws-lambda-nodejs';
 
 export interface MigrationsCustomResourceProps {
   stage: Stage;
@@ -47,6 +48,31 @@ export class MigrationsCustomResource extends Construct {
     const thisUrl = url.fileURLToPath(import.meta.url);
     const thisDir = path.dirname(thisUrl);
     const migrationsLambdaEntry = path.resolve(thisDir, 'migrations-lambda.js');
+
+    // Path to the backend prisma directory — resolved at synth time so
+    // commandHooks.afterBundling can copy the files into the bundle.
+    const prismaSourceDir = path.resolve(thisDir, '..', '..', '..', 'backend', 'prisma');
+
+    // Bug B fix: after esbuild bundles the Lambda handler, copy the
+    // prisma schema and seed into the output so migrations-lambda.ts
+    // can find them at /var/task/backend/prisma/<file>.
+    const bundling: BundlingOptions = {
+      commandHooks: {
+        afterBundling(_inputDir: string, outputDir: string): string[] {
+          return [
+            `mkdir -p "${outputDir}/backend/prisma"`,
+            `cp "${prismaSourceDir}/schema.prisma" "${outputDir}/backend/prisma/"`,
+            `cp "${prismaSourceDir}/seed.ts" "${outputDir}/backend/prisma/"`,
+          ];
+        },
+        beforeBundling(): string[] {
+          return [];
+        },
+        beforeInstall(): string[] {
+          return [];
+        },
+      },
+    };
 
     const migrationsFunction = new nodejs.NodejsFunction(this, 'MigrationsFunction', {
       functionName: `MercadoExpress-${stage}-prisma-migrate-and-seed`,
@@ -75,7 +101,14 @@ export class MigrationsCustomResource extends Construct {
         // to resolve it at synth time via describeParameters (which fails in CI).
         // The Lambda reads the value via ssm:GetParameter at cold start.
         ADMIN_PASSWORD_PARAM_NAME: adminPasswordParameterName,
+        // Bug A fix: Lambda runtime has no writable $HOME at
+        // /home/sbx_user1051. npm crashes trying to write cache there.
+        // Redirect HOME and npm cache to /tmp (Lambda's writable tmpfs).
+        HOME: '/tmp',
+        npm_config_cache: '/tmp/.npm',
+        npm_config_tmp: '/tmp/.npm-tmp',
       },
+      bundling,
     });
 
     // The Lambda carries the Secrets Manager secret ARN in DATABASE_URL

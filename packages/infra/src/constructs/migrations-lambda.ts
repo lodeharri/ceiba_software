@@ -33,13 +33,14 @@ import { GetParameterCommand } from '@aws-sdk/client-ssm';
 // `__dirname` shim which is always available in CJS.
 const THIS_DIR: string =
   typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
-// Resolve the Prisma schema + seed paths relative to THIS file so the
-// subprocess finds them regardless of CWD (test runs from packages/infra,
-// production Lambda runs from /var/task after esbuild bundling).
-// From packages/infra/src/constructs/ (or dist/src/constructs/), the
-// backend prisma dir is 4 levels up + packages/backend/prisma/.
-const PRISMA_SCHEMA_PATH = path.resolve(THIS_DIR, '../../../../backend/prisma/schema.prisma');
-const PRISMA_SEED_PATH = path.resolve(THIS_DIR, '../../../../backend/prisma/seed.ts');
+// Resolve the Prisma schema + seed paths.
+// In the Lambda runtime, __dirname = /var/task (esbuild output root). The
+// bundling.commandHooks.afterBundling in migrations.ts copies
+// schema.prisma and seed.ts into /var/task/backend/prisma/ at bundle time.
+// Resolve relative to THIS_DIR so both test (source tree) and production
+// (Lambda runtime) find the files at the same relative location.
+const PRISMA_SCHEMA_PATH = path.resolve(THIS_DIR, 'backend/prisma/schema.prisma');
+const PRISMA_SEED_PATH = path.resolve(THIS_DIR, 'backend/prisma/seed.ts');
 
 interface CloudFormationResponse {
   Status: 'SUCCESS' | 'FAILED';
