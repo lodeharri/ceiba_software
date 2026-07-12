@@ -96,7 +96,7 @@ export const infraConfig: InfraConfig = {
     steady: 50,
   },
   reservedConcurrencyByStage: {
-    dev: 1,
+    dev: undefined,
     prod: undefined,
     // localstack: none — predictability is owned by LocalStack's single
     // Lambda container, so reserving concurrency would only stall cold starts.
