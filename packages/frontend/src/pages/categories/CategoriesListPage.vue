@@ -58,6 +58,9 @@ function extractMessage(e: unknown): string {
 
 <template>
   <div>
+    <p class="eyebrow mb-2 mt-6">P.05 — CATEGORÍAS</p>
+    <div class="section-hairline mb-4" />
+    <div class="section-rule mb-3" />
     <PageHeader :title="$t('categories.title')">
       <Button v-if="!showForm" size="sm" @click="openForm">
         + {{ $t('categories.createCategory') }}

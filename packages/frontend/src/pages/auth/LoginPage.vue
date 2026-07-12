@@ -43,20 +43,10 @@ async function handleLogin() {
 
 <template>
   <div>
-    <!-- Brand header: a thesis on first sight. Per frontend-design,
-         open with the most characteristic thing: the brand and a tagline
-         that says what this product is FOR. MercadoExpress is a small
-         Colombian retail inventory operator's tool — not a SaaS. -->
-    <div class="text-center mb-8">
-      <div
-        class="inline-flex items-center justify-center w-14 h-14 rounded-card bg-primary text-card font-bold text-xl mb-3"
-        aria-hidden="true"
-      >
-        M
-      </div>
-      <h1 class="text-xl font-semibold text-text">MercadoExpress</h1>
-      <p class="text-sm text-text-muted mt-1">{{ $t('auth.tagline') }}</p>
-    </div>
+    <!-- Eyebrow marker: the login screen reads as an entry point to the ledger. -->
+    <p class="eyebrow text-center mb-3">P.00 — ACCESO</p>
+    <div class="section-hairline mb-5" />
+    <p class="text-sm text-text-muted text-center mb-6">{{ $t('auth.tagline') }}</p>
 
     <form class="flex flex-col gap-4" @submit.prevent="handleLogin">
       <Input

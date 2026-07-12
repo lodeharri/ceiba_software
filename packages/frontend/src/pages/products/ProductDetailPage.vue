@@ -122,6 +122,9 @@ async function handleSave() {
 
 <template>
   <div class="py-6">
+    <p class="eyebrow mb-2">P.01.A — DETALLE DE PRODUCTO</p>
+    <div class="section-hairline mb-4" />
+    <div class="section-rule mb-3" />
     <PageHeader :title="$t('products.editProduct')">
       <Button v-if="!editMode" size="sm" variant="secondary" @click="editMode = true">
         {{ $t('common.edit') }}
@@ -134,7 +137,16 @@ async function handleSave() {
 
     <template v-else-if="products.current">
       <!-- Product info card -->
-      <div class="border border-muted rounded-card p-6 bg-card mb-6">
+      <div class="relative border border-muted rounded-card p-6 bg-card mb-6">
+        <div
+          class="corner-fold"
+          :class="{
+            'corner-fold--success': stockBand === 'ok',
+            'corner-fold--warning': stockBand === 'warn' || stockBand === 'low',
+            'corner-fold--danger': stockBand === 'out',
+          }"
+          aria-hidden="true"
+        />
         <p class="font-mono text-xs text-text-muted mb-4">{{ products.current.sku }}</p>
 
         <!-- Stat cards: per frontend-design, a stat-grid pairs a small uppercase
@@ -151,7 +163,7 @@ async function handleSave() {
             data-testid="stat-stock"
           >
             <p class="text-[10px] uppercase tracking-wide text-text-muted font-medium">Stock</p>
-            <p class="text-2xl font-semibold mt-0.5">{{ products.current.stock }}</p>
+            <p class="hero-number text-2xl mt-0.5">{{ products.current.stock }}</p>
             <p class="text-xs mt-1">
               <span
                 class="inline-block px-1.5 py-0.5 rounded-atom text-[10px] font-medium"
@@ -164,7 +176,7 @@ async function handleSave() {
 
           <div class="rounded-card p-3 border border-muted" data-testid="stat-price">
             <p class="text-[10px] uppercase tracking-wide text-text-muted font-medium">Precio</p>
-            <p class="text-2xl font-semibold mt-0.5 font-mono">
+            <p class="hero-number text-2xl mt-0.5">
               ${{ Number(products.current.price).toLocaleString('es-CO') }}
             </p>
             <p class="text-xs text-text-muted mt-1">COP</p>
@@ -174,7 +186,7 @@ async function handleSave() {
             <p class="text-[10px] uppercase tracking-wide text-text-muted font-medium">
               Stock mínimo
             </p>
-            <p class="text-2xl font-semibold mt-0.5">{{ products.current.stockMin }}</p>
+            <p class="hero-number text-2xl mt-0.5">{{ products.current.stockMin }}</p>
             <p class="text-xs text-text-muted mt-1">umbral de alerta</p>
           </div>
 

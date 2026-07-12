@@ -3,6 +3,11 @@
  * DashboardLayout — main app shell (design.md §8.6 wireframe top bar).
  * Top bar: MercadoExpress logo, sync indicator, admin dropdown, "Salir".
  * Slot for <RouterView />; responsive ≥ 360px.
+ *
+ * Visual refresh (pasada 2):
+ *  - 4px indigo clip bar across the very top (signature "marker" strip).
+ *  - Nav restyled as folder-tabs: thick bottom border + elevated bg
+ *    for the active tab, using the .nav-tab component class.
  */
 import { ref } from 'vue';
 import { useRouter, RouterLink } from 'vue-router';
@@ -20,6 +25,9 @@ function logout() {
 
 <template>
   <div class="min-h-screen flex flex-col bg-surface">
+    <!-- Top marker clip bar -->
+    <div class="h-1 w-full bg-primary" aria-hidden="true" />
+
     <!-- Top bar -->
     <header class="flex items-center justify-between px-4 py-3 border-b border-muted bg-card">
       <!-- Logo + brand -->
@@ -80,9 +88,9 @@ function logout() {
       </div>
     </header>
 
-    <!-- Nav -->
+    <!-- Nav (folder-tab style) -->
     <nav
-      class="flex gap-1 px-4 py-2 border-b border-muted bg-card overflow-x-auto"
+      class="flex px-4 bg-card overflow-x-auto border-b border-muted"
       aria-label="Main navigation"
     >
       <RouterLink
@@ -95,8 +103,8 @@ function logout() {
         ]"
         :key="link.name"
         :to="{ name: link.name }"
-        class="px-3 py-1.5 text-sm text-text-muted rounded-atom hover:text-text hover:bg-surface transition-all duration-hover whitespace-nowrap"
-        active-class="!text-primary !bg-surface font-medium"
+        class="nav-tab"
+        active-class="nav-tab--active"
       >
         {{ link.label }}
       </RouterLink>

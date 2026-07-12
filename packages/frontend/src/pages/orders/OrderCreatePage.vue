@@ -94,6 +94,9 @@ async function handleSubmit() {
 
 <template>
   <div>
+    <p class="eyebrow mb-2 mt-6">P.04.B — NUEVO PEDIDO</p>
+    <div class="section-hairline mb-4" />
+    <div class="section-rule mb-3" />
     <PageHeader :title="$t('orders.newOrder')" />
 
     <div

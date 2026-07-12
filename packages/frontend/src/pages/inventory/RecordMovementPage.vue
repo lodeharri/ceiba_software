@@ -61,6 +61,9 @@ export default { name: 'RecordMovementPage' };
 
 <template>
   <div class="py-6 max-w-md">
+    <p class="eyebrow mb-2">P.02.A — REGISTRAR MOVIMIENTO</p>
+    <div class="section-hairline mb-4" />
+    <div class="section-rule mb-3" />
     <PageHeader :title="$t('inventory.recordMovement')" />
 
     <!-- Product selector (if no productId in query) -->

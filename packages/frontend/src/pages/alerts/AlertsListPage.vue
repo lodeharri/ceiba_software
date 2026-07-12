@@ -24,6 +24,9 @@ function setFilter(s: AlertStatus | undefined) {
 
 <template>
   <div>
+    <p class="eyebrow mb-2 mt-6">P.03 — ALERTAS</p>
+    <div class="section-hairline mb-4" />
+    <div class="section-rule mb-3" />
     <PageHeader :title="$t('alerts.title')" />
 
     <!-- Status filter tabs -->

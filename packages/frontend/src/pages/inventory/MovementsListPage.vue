@@ -41,6 +41,9 @@ function handlePage(p: number) {
 
 <template>
   <div>
+    <p class="eyebrow mb-2 mt-6">P.02 — MOVIMIENTOS</p>
+    <div class="section-hairline mb-4" />
+    <div class="section-rule mb-3" />
     <PageHeader :title="$t('inventory.allMovements')" />
 
     <!-- Filters -->

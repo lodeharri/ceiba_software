@@ -74,6 +74,9 @@ async function handleSubmit() {
 
 <template>
   <div class="py-6 max-w-lg">
+    <p class="eyebrow mb-2">P.01.B — NUEVO PRODUCTO</p>
+    <div class="section-hairline mb-4" />
+    <div class="section-rule mb-3" />
     <PageHeader :title="$t('products.createProduct')" />
 
     <div

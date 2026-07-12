@@ -3,3 +3,106 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ─── Signature component classes (bitácora de inventario) ─────────────
+   Used directly by page templates. Pages inherit most of the refresh
+   through tokens.css; these classes are the bold signature elements. */
+
+@layer components {
+  /* Eyebrow: monospace position marker ("P.01 — PRODUCTOS") that sits
+     above a hairline, encoding real page position in the system. */
+  .eyebrow {
+    font-family: 'JetBrains Mono Variable', ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    line-height: 1;
+  }
+
+  /* Marker bar: 4px horizontal bar in indigo, used above
+     page headers. Single color keeps the discipline — every page
+     opens with the same marker. */
+  .section-rule {
+    height: var(--rule-thick);
+    width: 100%;
+    background-color: var(--color-primary);
+    border-radius: 2px;
+  }
+
+  /* Hairline: 1px divider that sits between the eyebrow and the body
+     to give the page a "ledger entry" feel. */
+  .section-hairline {
+    height: var(--rule-hairline);
+    width: 100%;
+    background-color: var(--color-muted);
+  }
+
+  /* Corner-fold: triangle sticker in the top-right corner of a card
+     or alert. Color encodes state. Uses the empty 2D triangle in the
+     top-right corner of a card as a colored flag. */
+  .corner-fold {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 0 16px 16px 0;
+    border-color: transparent var(--color-highlighter) transparent transparent;
+    pointer-events: none;
+  }
+
+  .corner-fold--success {
+    border-color: transparent var(--color-success) transparent transparent;
+  }
+
+  .corner-fold--warning {
+    border-color: transparent var(--color-warning) transparent transparent;
+  }
+
+  .corner-fold--danger {
+    border-color: transparent var(--color-danger) transparent transparent;
+  }
+
+  .corner-fold--muted {
+    border-color: transparent var(--color-muted) transparent transparent;
+  }
+
+  /* Hero number: large mono stat used in product / order detail. */
+  .hero-number {
+    font-family: 'JetBrains Mono Variable', ui-monospace, monospace;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.05;
+    color: var(--color-text);
+  }
+
+  /* Nav tab (folder-tab style). Active = thick bottom border + elevated
+     background. Inactive = muted, no border. */
+  .nav-tab {
+    position: relative;
+    padding: 10px 14px;
+    font-size: 14px;
+    color: var(--color-text-muted);
+    border-bottom: 3px solid transparent;
+    transition:
+      color var(--duration-hover) var(--ease-layout),
+      border-color var(--duration-hover) var(--ease-layout),
+      background-color var(--duration-hover) var(--ease-layout);
+    white-space: nowrap;
+  }
+
+  .nav-tab:hover {
+    color: var(--color-text);
+    background-color: var(--color-surface);
+  }
+
+  .nav-tab--active {
+    color: var(--color-primary);
+    font-weight: 600;
+    border-bottom-color: var(--color-primary);
+    background-color: var(--color-surface);
+  }
+}

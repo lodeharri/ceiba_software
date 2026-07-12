@@ -22,6 +22,9 @@ function formatDate(iso: string): string {
 
 <template>
   <div>
+    <p class="eyebrow mb-2 mt-6">P.04 — PEDIDOS</p>
+    <div class="section-hairline mb-4" />
+    <div class="section-rule mb-3" />
     <PageHeader :title="$t('orders.title')">
       <Button size="sm" @click="router.push({ name: 'order-create' })">
         + {{ $t('orders.newOrder') }}

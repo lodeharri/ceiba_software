@@ -64,6 +64,9 @@ function formatDate(iso: string): string {
 
 <template>
   <div class="py-6 max-w-lg">
+    <p class="eyebrow mb-2">P.04.A — DETALLE DE PEDIDO</p>
+    <div class="section-hairline mb-4" />
+    <div class="section-rule mb-3" />
     <PageHeader :title="$t('orders.orderDetail')" />
 
     <div v-if="orders.loading && !orders.current" class="text-center text-text-muted py-12">
@@ -71,7 +74,17 @@ function formatDate(iso: string): string {
     </div>
 
     <template v-else-if="orders.current">
-      <div class="border border-muted rounded-card p-6 bg-card mb-6">
+      <div class="relative border border-muted rounded-card p-6 bg-card mb-6">
+        <div
+          class="corner-fold"
+          :class="{
+            'corner-fold--success': orders.current.status === 'RECIBIDA',
+            'corner-fold--warning': orders.current.status === 'PENDIENTE',
+            'corner-fold--danger': orders.current.status === 'RECHAZADA',
+            'corner-fold--muted': orders.current.status === 'APROBADA',
+          }"
+          aria-hidden="true"
+        />
         <p class="font-mono text-xs text-text-muted mb-3">{{ orders.current.id }}</p>
 
         <!-- Product info -->
@@ -80,7 +93,7 @@ function formatDate(iso: string): string {
             <p class="font-semibold text-text">{{ orders.current.productName }}</p>
             <p class="text-sm text-text-muted font-mono">{{ orders.current.productSku }}</p>
           </div>
-          <span class="text-2xl font-mono font-bold text-text">{{ orders.current.quantity }}</span>
+          <span class="hero-number text-2xl">{{ orders.current.quantity }}</span>
         </div>
 
         <dl class="grid grid-cols-2 gap-3 text-sm mb-6">

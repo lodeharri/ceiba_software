@@ -17,13 +17,24 @@ onMounted(() => alerts.fetchOne(route.params.id as string));
 
 <template>
   <div class="py-6 max-w-lg">
+    <p class="eyebrow mb-2">P.03.A — DETALLE DE ALERTA</p>
+    <div class="section-hairline mb-4" />
+    <div class="section-rule mb-3" />
     <PageHeader :title="$t('alerts.alertDetail')" />
 
     <div v-if="alerts.loading" class="text-center text-text-muted py-12">
       {{ $t('common.loading') }}
     </div>
 
-    <div v-else-if="alerts.current" class="border border-muted rounded-card p-6 bg-card">
+    <div v-else-if="alerts.current" class="relative border border-muted rounded-card p-6 bg-card">
+      <div
+        class="corner-fold"
+        :class="{
+          'corner-fold--success': alerts.current.status === 'RESUELTA',
+          'corner-fold--warning': alerts.current.status === 'ACTIVA',
+        }"
+        aria-hidden="true"
+      />
       <div class="flex items-start justify-between mb-4">
         <p class="font-mono text-xs text-text-muted">{{ alerts.current.productSku }}</p>
         <AlertBadge :status="alerts.current.status" />

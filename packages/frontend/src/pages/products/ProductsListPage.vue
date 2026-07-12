@@ -34,6 +34,9 @@ function goToCreate() {
 
 <template>
   <div>
+    <p class="eyebrow mb-2 mt-6">P.01 — PRODUCTOS</p>
+    <div class="section-hairline mb-4" />
+    <div class="section-rule mb-3" />
     <PageHeader :title="$t('products.title')">
       <Button size="sm" @click="goToCreate"> + {{ $t('products.newProduct') }} </Button>
     </PageHeader>

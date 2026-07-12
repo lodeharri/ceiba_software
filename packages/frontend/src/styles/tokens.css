@@ -9,16 +9,30 @@
 
 /* ─── Color palette ─────────────────────────────────────────────────── */
 :root {
-  --color-primary: oklch(0.55 0.13 245);
-  --color-primary-hover: oklch(0.48 0.14 245);
-  --color-surface: oklch(0.99 0 0);
+  /* Ink + paper: warm paper with violet-leaning ink so we don't read as
+     the cream/terracotta template. Hue 95 keeps the surface alive without
+     going yellow; hue 280 on text avoids the "near-black" feel. */
+  --color-primary: oklch(0.48 0.15 250);
+  --color-primary-hover: oklch(0.42 0.16 250);
+  --color-surface: oklch(0.98 0.008 95);
   --color-card: oklch(1 0 0);
-  --color-success: oklch(0.62 0.13 145);
-  --color-warning: oklch(0.78 0.13 75);
-  --color-danger: oklch(0.55 0.18 25);
-  --color-muted: oklch(0.55 0.005 260);
-  --color-text: oklch(0.2 0.005 260);
-  --color-text-muted: oklch(0.45 0.005 260);
+  --color-success: oklch(0.6 0.14 155);
+  --color-warning: oklch(0.78 0.16 80);
+  --color-danger: oklch(0.58 0.2 28);
+  --color-muted: oklch(0.7 0.01 270);
+  --color-text: oklch(0.2 0.04 280);
+  --color-text-muted: oklch(0.45 0.02 280);
+
+  /* Marker / highlighter: signature accent used by corner-fold and the
+     "active" nav-tab marker. Stays yellow-warm so it reads as a real
+     highlighter, not a generic brand color. */
+  --color-highlighter: oklch(0.92 0.13 100);
+}
+
+/* ─── Signature rule weights ───────────────────────────────────────── */
+:root {
+  --rule-thick: 4px; /* marker bar above page headers and hero numbers */
+  --rule-hairline: 1px; /* divider between header eyebrow and content */
 }
 
 /* ─── Shadows ───────────────────────────────────────────────────────── */
