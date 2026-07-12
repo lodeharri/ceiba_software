@@ -22,12 +22,15 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as path from 'node:path';
 import * as url from 'node:url';
 import type { Stage } from '../config.js';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
 
 export interface MigrationsCustomResourceProps {
   stage: Stage;
   databaseUrlSecretArn: string;
   /** Name of the SSM SecureString parameter carrying the admin bootstrap password. */
   adminPasswordParameterName: string;
+  /** VPC in which to place the migrations Lambda. */
+  vpc: ec2.IVpc;
 }
 
 export class MigrationsCustomResource extends Construct {
@@ -36,7 +39,7 @@ export class MigrationsCustomResource extends Construct {
   public constructor(scope: Construct, id: string, props: MigrationsCustomResourceProps) {
     super(scope, id);
 
-    const { stage, databaseUrlSecretArn, adminPasswordParameterName } = props;
+    const { stage, databaseUrlSecretArn, adminPasswordParameterName, vpc } = props;
 
     // Lambda that runs the migrations + seed.
     // Resolve the entry path relative to this construct file so it works
@@ -52,6 +55,9 @@ export class MigrationsCustomResource extends Construct {
       handler: 'handler',
       memorySize: 1024,
       timeout: Duration.minutes(15),
+      vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+      allowPublicSubnet: true,
       environment: {
         STAGE: stage,
         // The Lambda receives the Secrets Manager secret ARN and resolves

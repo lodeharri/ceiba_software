@@ -40,6 +40,7 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type Stage, infraConfig } from '../config.js';
@@ -78,6 +79,8 @@ export interface ApiStackProps extends StackProps {
   jwtSource?: JwtSource | undefined;
   /** Database security group id (passed through from DatabaseStack). */
   securityGroupId?: string | undefined;
+  /** VPC for Lambda placement (passed from DatabaseStack). */
+  vpc?: ec2.IVpc | undefined;
   /** @deprecated Use `corsAllowOrigin` (full origin string). Kept for
    *  callers that have not migrated yet; when both are provided,
    *  `corsAllowOrigin` wins. */
@@ -304,13 +307,18 @@ export class ApiStack extends Stack {
         logGroup,
         memorySize: 512,
         timeout: Duration.seconds(10),
-        // `bcrypt` ships native bindings + `@mapbox/node-pre-gyp` (a dev-time
-        // install helper that pulls `aws-sdk`/`nock`). Marking the module +
-        // its pre-gyp toolchain external keeps esbuild from trying to bundle
-        // the install-time scaffolding.
+        // `bcryptjs` is pure JS — no native bindings, no external bundling needed.
+        // Only `aws-sdk` remains external (injected at Lambda runtime).
         bundling: {
-          externalModules: ['bcrypt', '@mapbox/node-pre-gyp', 'aws-sdk', 'nock', 'mock-aws-s3'],
+          externalModules: ['aws-sdk'],
         },
+        ...(props.vpc
+          ? {
+              vpc: props.vpc,
+              vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+              allowPublicSubnet: true,
+            }
+          : {}),
         environment: {
           STAGE: stage,
           DATABASE_URL: databaseUrlEnv,

@@ -47,6 +47,9 @@ export class DatabaseStack extends Stack {
   /** CFN output — the security group id that grants Lambda ingress to 5432. */
   public readonly securityGroupId: string;
 
+  /** The VPC used by this stack — exported for ApiStack Lambda VPC placement. */
+  public readonly vpc: ec2.IVpc;
+
   public constructor(scope: Construct, id: string, props: DatabaseStackProps) {
     super(scope, id, props);
 
@@ -89,6 +92,8 @@ export class DatabaseStack extends Stack {
       ec2.Port.tcp(5432),
       'Postgres from Lambdas in the VPC',
     );
+
+    this.vpc = vpc;
 
     // The DB credentials live in a Secrets Manager secret (auto-rotated by
     // RDS). We expose it as an explicit `rds.DatabaseSecret` so we can
@@ -135,12 +140,7 @@ export class DatabaseStack extends Stack {
         engine: rds.DatabaseInstanceEngine.postgres({
           version: rds.PostgresEngineVersion.VER_16,
         }),
-        parameters: {
-          // `shared_preload_libraries` must include `vector` for pgvector
-          // to be loadable. This is a static engine parameter; AWS RDS
-          // provisions it on instance creation.
-          shared_preload_libraries: 'vector',
-        },
+        parameters: {},
       }),
       // Publicly accessible is fine in MVP (single-VPC, single-region);
       // prod should switch this to `false` once we have a VPC peering
@@ -201,6 +201,7 @@ export class DatabaseStack extends Stack {
       stage,
       databaseUrlSecretArn: this.databaseUrlSecretArn,
       adminPasswordParameterName: this.adminPasswordParameterName,
+      vpc,
     });
     // Expose the migrations construct node so other stacks can add it as a dependency.
     this.migrationsNode = migrations;

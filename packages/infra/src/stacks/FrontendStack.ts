@@ -8,21 +8,32 @@
  *   - SPA fallback: 404 -> 200 /index.html (so client-side router takes over).
  *   - Response headers policy: CSP, X-Content-Type-Options, Referrer-Policy,
  *     X-Frame-Options (RISK-W01).
+ *   - Second CloudFront behavior: `/api/*` → API Gateway (F-004 fix).
+ *     The API Gateway hostname is derived from the import of
+ *     `MercadoExpress-${stage}-HttpApiUrl` via Fn.importValue, then
+ *     parsed with Fn.split to extract the hostname for HttpOrigin.
+ *   - BucketDeployment: uploads `packages/frontend/dist/` to S3 at synth time.
+ *   - Synth-time rebuild: rewrites `.env.production` with relative API URL
+ *     (`VITE_API_BASE_URL=/api/v1`) and runs `vite build` so the bundle
+ *     baked-in value matches the CloudFront routing (F-004).
  *
- * Exports `distributionDomainName` so ApiStack can wire the CORS allow-origin
- * at synth time (RISK-002).
- *
- * No source files for the SPA live in this stack — the SPA is built by the
- * frontend package (PR 3) and uploaded to the bucket by a follow-up CDK
- * BucketDeployment construct. For PR 1 the bucket is empty; the
- * CloudFront distribution still serves a 404 -> index.html response.
+ * Does NOT export distributionDomainName to avoid a cross-stack cycle with
+ * ApiStack (which would create a cyclic reference when Fn.importValue
+ * of HttpApiUrl is also used from this stack).
  */
 
-import { Stack, type StackProps, CfnOutput, Duration, RemovalPolicy } from 'aws-cdk-lib';
+import { Stack, type StackProps, CfnOutput, Duration, RemovalPolicy, Fn } from 'aws-cdk-lib';
 import type { Construct } from 'constructs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as cf from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
+import { ViewerProtocolPolicy } from 'aws-cdk-lib/aws-cloudfront';
+import { HttpOrigin } from 'aws-cdk-lib/aws-cloudfront-origins';
+import * as path from 'node:path';
+import * as fs from 'node:fs';
+import * as url from 'node:url';
+import { execSync } from 'node:child_process';
 import { type Stage, infraConfig } from '../config.js';
 
 export interface FrontendStackProps extends StackProps {
@@ -30,32 +41,52 @@ export interface FrontendStackProps extends StackProps {
 }
 
 export class FrontendStack extends Stack {
-  /** The CloudFront distribution's domain name (e.g. d111.cloudfront.net).
-   *  Consumed by ApiStack to build the CORS allow-origin allow-list. */
-  public readonly distributionDomainName: string;
-
   public constructor(scope: Construct, id: string, props: FrontendStackProps) {
     super(scope, id, props);
 
     const { stage } = props;
 
-    // Private S3 bucket — the SPA bundle is uploaded here. The bucket has
-    // no public read; CloudFront reaches it via the OAC below.
+    // ── Synth-time frontend rebuild (F-004) ────────────────────────────────────
+    // import.meta.url for dist/src/stacks/FrontendStack.js:
+    //   dist/src/stacks -> dist/src -> dist -> packages/infra -> packages -> workspace-root
+    //   = 5 '..' segments to reach the workspace root.
+    const rootDir = path.resolve(
+      path.dirname(url.fileURLToPath(import.meta.url)),
+      '..',
+      '..',
+      '..',
+      '..',
+      '..',
+    );
+    const frontendDir = path.join(rootDir, 'packages', 'frontend');
+    const envProductionPath = path.join(frontendDir, '.env.production');
+    const envProductionContent = 'VITE_API_BASE_URL=/api/v1\n';
+    if (
+      !fs.existsSync(envProductionPath) ||
+      fs.readFileSync(envProductionPath, 'utf8') !== envProductionContent
+    ) {
+      fs.writeFileSync(envProductionPath, envProductionContent, 'utf8');
+    }
+    try {
+      execSync('pnpm --filter frontend build', {
+        cwd: rootDir,
+        stdio: 'pipe',
+      });
+    } catch (err) {
+      throw new Error(`Frontend build failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    // ── Private S3 bucket ─────────────────────────────────────────────────────
     const bucket = new s3.Bucket(this, 'SpaBucket', {
       bucketName: `mercadoexpress-${stage}-spa-${this.account}`,
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
-      // In dev the bucket is destroyed with the stack; in prod it survives
-      // a stack delete (the SPA assets are valuable).
       removalPolicy: stage === 'prod' ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
       autoDeleteObjects: stage !== 'prod',
     });
 
-    // Response headers policy — the security baseline per RISK-W01.
-    // CSP itself is delivered via index.html (PR 3), but we set the
-    // transport-level headers here so they are guaranteed even for
-    // assets that bypass the document (e.g. direct asset loads).
+    // ── Response headers policy ────────────────────────────────────────────────
     const securityHeadersPolicy = new cf.ResponseHeadersPolicy(this, 'SecurityHeadersPolicy', {
       responseHeadersPolicyName: `MercadoExpress-${stage}-SecurityHeaders`,
       securityHeadersBehavior: {
@@ -94,39 +125,82 @@ export class FrontendStack extends Stack {
     // S3 bucket. The bucket policy below grants the OAC permission to read.
     const oac = new cf.S3OriginAccessControl(this, 'SpaOac');
 
-    const distribution = new cf.Distribution(this, 'SpaDistribution', {
+    const defaultBehavior: cf.BehaviorOptions = {
+      origin: origins.S3BucketOrigin.withOriginAccessControl(bucket as s3.IBucket, {
+        originAccessControl: oac,
+      }),
+      viewerProtocolPolicy: cf.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      responseHeadersPolicy: securityHeadersPolicy,
+      allowedMethods: cf.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
+      cachedMethods: cf.CachedMethods.CACHE_GET_HEAD_OPTIONS,
+    };
+
+    // Build the CloudFront distribution props. The second behavior for /api/*
+    // routes to the API Gateway. The API Gateway endpoint URL is imported via
+    // Fn.importValue from the ApiStack output, and we parse it with Fn.split
+    // to extract just the hostname for HttpOrigin.
+    const distributionProps: cf.DistributionProps = {
       comment: `MercadoExpress ${stage} SPA distribution (ADR-8: default cloudfront.net cert, no custom domain)`,
       defaultRootObject: 'index.html',
       errorResponses: spaErrorResponses,
       httpVersion: cf.HttpVersion.HTTP2_AND_3,
-      priceClass: cf.PriceClass.PRICE_CLASS_100, // US/EU only — cheapest for MVP
+      priceClass: cf.PriceClass.PRICE_CLASS_100,
       minimumProtocolVersion: cf.SecurityPolicyProtocol.TLS_V1_2_2021,
-      defaultBehavior: {
-        origin: origins.S3BucketOrigin.withOriginAccessControl(bucket as s3.IBucket, {
-          originAccessControl: oac,
-        }),
-        viewerProtocolPolicy: cf.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-        responseHeadersPolicy: securityHeadersPolicy,
-        allowedMethods: cf.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
+      defaultBehavior,
+    };
+
+    // Add second CloudFront behavior for /api/* → API Gateway (F-004 fix).
+    // Fn.importValue('MercadoExpress-${stage}-HttpApiUrl') returns the full URL.
+    // Fn.split('://', ...) splits on '://', returning ['https', 'hostname/path'].
+    // Fn.select(1, ...) takes the hostname/path part.
+    // This avoids importing a CDK token string in FrontendStack, preventing
+    // a cross-stack reference cycle with ApiStack.
+    const apiEndpointFull = Fn.importValue(`MercadoExpress-${stage}-HttpApiUrl`);
+    const apiHostnameWithPath = Fn.select(1, Fn.split('://', apiEndpointFull));
+    const apiOrigin = new HttpOrigin(apiHostnameWithPath, {
+      originPath: '',
+      protocolPolicy: cf.OriginProtocolPolicy.HTTPS_ONLY,
+    });
+    (
+      distributionProps as cf.DistributionProps & {
+        additionalBehaviors: Record<string, cf.BehaviorOptions>;
+      }
+    )['additionalBehaviors'] = {
+      '/api/*': {
+        origin: apiOrigin,
+        viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        allowedMethods: cf.AllowedMethods.ALLOW_ALL,
         cachedMethods: cf.CachedMethods.CACHE_GET_HEAD_OPTIONS,
       },
+    };
+
+    const distribution = new cf.Distribution(
+      this,
+      'SpaDistribution',
+      distributionProps as cf.DistributionProps & {
+        additionalBehaviors: Record<string, cf.BehaviorOptions>;
+      },
+    );
+
+    // ── BucketDeployment ───────────────────────────────────────────────────────
+    // Upload the freshly-built frontend dist to S3 (F-002 fix).
+    new s3deploy.BucketDeployment(this, 'DeployFrontend', {
+      sources: [s3deploy.Source.asset(path.join(frontendDir, 'dist'))],
+      destinationBucket: bucket as s3.IBucket,
+      distribution,
+      distributionPaths: ['/index.html', '/assets/*'],
     });
 
-    this.distributionDomainName = distribution.distributionDomainName;
-
+    // Export the CloudFront domain name as a CFN output so ApiStack can
+    // reference it as a cross-stack prop. This export is resolved at
+    // synth time (not at app.ts construction time), breaking the cycle.
     new CfnOutput(this, 'DistributionDomainName', {
-      value: this.distributionDomainName,
-      description: 'CloudFront distribution domain (CORS allow-origin for the API)',
+      value: distribution.distributionDomainName,
+      description: 'CloudFront distribution domain',
       exportName: `MercadoExpress-${stage}-DistributionDomainName`,
     });
-    new CfnOutput(this, 'SpaBucketName', {
-      value: bucket.bucketName,
-      description: 'S3 bucket holding the SPA static bundle',
-      exportName: `MercadoExpress-${stage}-SpaBucketName`,
-    });
 
-    // Reference `infraConfig` so the import isn't dropped; the project-wide
-    // tags are applied by `cdk.Tags.of(app).add(...)` in `app.ts`.
+    // Reference `infraConfig` so the import isn't dropped.
     void infraConfig;
   }
 }

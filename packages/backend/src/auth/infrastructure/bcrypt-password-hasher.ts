@@ -6,7 +6,7 @@
  * one verifies in the other.
  */
 
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import type { PasswordHasher } from '../domain/ports/password-hasher.js';
 
 export class BcryptPasswordHasher implements PasswordHasher {
