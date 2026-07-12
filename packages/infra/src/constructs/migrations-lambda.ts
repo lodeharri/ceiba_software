@@ -2,30 +2,22 @@
  * Migrations Lambda entry (PR 2a BLOCKER C2 closeout + PR 2).
  *
  * On stack create/update, this Lambda runs in one invocation:
- *   1. Resolve DATABASE_URL via GetSecretValue against DATABASE_SECRET_ARN.
- *   2. Resolve ADMIN_PASSWORD via GetParameter against ADMIN_PASSWORD_PARAM_NAME.
- *   3. `npx prisma migrate deploy` against DATABASE_URL.
- *   4. `npx tsx prisma/seed.ts` against DATABASE_URL (idempotent upserts).
- *   5. Return { Status: 'SUCCESS' | 'FAILED', Data, Reason }.
+ *   1. DATABASE_URL and ADMIN_PASSWORD are pre-resolved at deploy time
+ *      via CDK SecretValue / Fn::Join intrinsics (no runtime SDK calls).
+ *   2. `npx prisma migrate deploy` against DATABASE_URL.
+ *   3. `npx tsx prisma/seed.ts` against DATABASE_URL (idempotent upserts).
+ *   4. Return { Status: 'SUCCESS' | 'FAILED', Data, Reason }.
  *
  * On Delete: no-op (migrations are additive-only, DB outlives the stack).
  *
- * PR 2 changes (design.md §3.14):
- *   - STAGE=localstack bypasses Secrets Manager / SSM. The Lambda reads
- *     DATABASE_URL and ADMIN_PASSWORD directly from process.env. This is
- *     the only way LocalStack deployments work because the DynamoDB-backed
- *     Secrets Manager / SSM services are local-only and do not survive
- *     across stack updates in a predictable way.
- *   - STAGE=dev|prod keep the existing AWS SDK resolution path.
+ * PR 2 changes: no longer calls GetSecretValue or GetParameter at runtime.
+ * DATABASE_URL and ADMIN_PASSWORD are passed as pre-resolved env vars.
+ * The localstack stage bypass reads DATABASE_URL directly from process.env.
  */
 
 import { spawnSync } from 'node:child_process';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
-import { GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
-import type { SSMClient } from '@aws-sdk/client-ssm';
-import { GetParameterCommand } from '@aws-sdk/client-ssm';
 
 // Resolve THIS file's directory in either CJS (production Lambda after
 // esbuild bundling) or ESM (test run via Node's require(esm)). CJS strips
@@ -78,79 +70,6 @@ function runCommand(
   };
 }
 
-function resolveLocalEnvValue(name: string): string {
-  const value = process.env[name];
-  if (!value || value.length === 0) {
-    throw new Error(`${name} env var is not set`);
-  }
-  return value;
-}
-
-async function resolveDatabaseUrl(): Promise<string> {
-  // PR 2: localstack stage bypasses Secrets Manager. The Lambda runtime
-  // (or docker compose env_file) populates DATABASE_URL directly.
-  if (process.env['STAGE'] === 'localstack') {
-    return resolveLocalEnvValue('DATABASE_URL');
-  }
-
-  const secretArn = process.env['DATABASE_SECRET_ARN'];
-  if (!secretArn) {
-    throw new Error('DATABASE_SECRET_ARN env var is not set');
-  }
-
-  // The AWS SDK v3 is available in the Lambda runtime.
-
-  const { SecretsManagerClient } = await import('@aws-sdk/client-secrets-manager');
-  const Client = SecretsManagerClient as new (opts: object) => SecretsManagerClient;
-  const client = new Client({});
-  const command = new GetSecretValueCommand({ SecretId: secretArn });
-  const response = await client.send(command);
-  const secretValue = response.SecretString;
-  if (!secretValue) {
-    throw new Error(`Empty secret value for ARN: ${secretArn}`);
-  }
-  // The secret contains JSON: { "username": "...", "password": "...", "host": "...", "port": 5432, "dbname": "..." }
-  let parsed: { username: string; password: string; host: string; port: number; dbname: string };
-  try {
-    parsed = JSON.parse(secretValue) as {
-      username: string;
-      password: string;
-      host: string;
-      port: number;
-      dbname: string;
-    };
-  } catch {
-    throw new Error(`DATABASE_SECRET_ARN did not contain valid JSON: ${secretArn}`);
-  }
-  const { username, password, host, port, dbname } = parsed;
-  const encodedPassword = encodeURIComponent(password);
-  return `postgresql://${username}:${encodedPassword}@${host}:${port}/${dbname}`;
-}
-
-async function resolveAdminPassword(): Promise<string> {
-  // PR 2: localstack stage bypasses SSM. ADMIN_PASSWORD is supplied
-  // directly via the Lambda runtime / docker compose env_file.
-  if (process.env['STAGE'] === 'localstack') {
-    return resolveLocalEnvValue('ADMIN_PASSWORD');
-  }
-
-  const paramName = process.env['ADMIN_PASSWORD_PARAM_NAME'];
-  if (!paramName) {
-    throw new Error('ADMIN_PASSWORD_PARAM_NAME env var is not set');
-  }
-
-  const { SSMClient } = await import('@aws-sdk/client-ssm');
-  const Client = SSMClient as new (opts: object) => SSMClient;
-  const client = new Client({});
-  const command = new GetParameterCommand({ Name: paramName, WithDecryption: true });
-  const response = await client.send(command);
-  const value = response.Parameter?.Value;
-  if (!value) {
-    throw new Error(`Empty admin password value for SSM parameter: ${paramName}`);
-  }
-  return value;
-}
-
 export const handler = async (
   event: CloudFormationCustomResourceEvent,
 ): Promise<CloudFormationResponse> => {
@@ -165,25 +84,36 @@ export const handler = async (
     };
   }
 
-  // Create and Update: run migrations + seed.
+  // DATABASE_URL and ADMIN_PASSWORD are pre-resolved at CDK deploy time via
+  // Fn::Join / SecretValue intrinsics. No runtime SDK calls needed.
+  const databaseUrl = process.env['DATABASE_URL'];
+  const adminPassword = process.env['ADMIN_PASSWORD'];
+
+  if (!databaseUrl) {
+    const reason = 'DATABASE_URL env var is not set';
+    respond(event, { Status: 'FAILED', Reason: reason });
+    return { Status: 'FAILED', Reason: reason };
+  }
+  if (!adminPassword) {
+    const reason = 'ADMIN_PASSWORD env var is not set';
+    respond(event, { Status: 'FAILED', Reason: reason });
+    return { Status: 'FAILED', Reason: reason };
+  }
+
+  const env: Record<string, string> = {
+    DATABASE_URL: databaseUrl,
+    ADMIN_PASSWORD: adminPassword,
+  };
+
+  // eslint-disable-next-line no-console
+  console.log(
+    JSON.stringify({
+      msg: 'running prisma migrate deploy',
+      databaseUrlHost: databaseUrl.split('@').pop(),
+    }),
+  );
+
   try {
-    const [databaseUrl, adminPassword] = await Promise.all([
-      resolveDatabaseUrl(),
-      resolveAdminPassword(),
-    ]);
-    const env: Record<string, string> = {
-      DATABASE_URL: databaseUrl,
-      ADMIN_PASSWORD: adminPassword,
-    };
-
-    // eslint-disable-next-line no-console
-    console.log(
-      JSON.stringify({
-        msg: 'running prisma migrate deploy',
-        databaseUrlHost: databaseUrl.split('@').pop(),
-      }),
-    );
-
     const migrate = runCommand(
       'npx',
       ['prisma', 'migrate', 'deploy', '--schema', PRISMA_SCHEMA_PATH],

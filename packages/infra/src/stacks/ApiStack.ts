@@ -31,7 +31,7 @@
  * Lambda does not need to know about BC boundaries).
  */
 
-import { Stack, type StackProps, CfnOutput, Duration, RemovalPolicy } from 'aws-cdk-lib';
+import { Stack, type StackProps, CfnOutput, Duration, Fn, RemovalPolicy } from 'aws-cdk-lib';
 import type { Construct } from 'constructs';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import { CorsHttpMethod } from 'aws-cdk-lib/aws-apigatewayv2';
@@ -39,7 +39,7 @@ import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
-import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -71,12 +71,13 @@ export interface ApiStackProps extends StackProps {
   /**
    * PR 2: how the BC Lambdas receive `JWT_SECRET` / `JWT_SECRET_PREVIOUS`.
    * `plain-env` carries the literals (localstack); `ssm-parameter` carries
-   * SSM SecureString parameter names that the Lambda resolves at cold
-   * start via ssm:GetParameter (dev/prod). When omitted, an SSM parameter
-   * is provisioned and a matching `ssm-parameter` source is built (PR 1
-   * default behavior).
+   * SSM SecureString parameter names (deprecated — jwtSecretArn wins when both are set).
    */
   jwtSource?: JwtSource | undefined;
+  /** ARN of the JWT secret in Secrets Manager (NEW — replaces ssm.StringParameter pattern). */
+  jwtSecretArn?: string | undefined;
+  /** ARN of the previous JWT secret in Secrets Manager (for rotation overlap window). */
+  jwtSecretPreviousArn?: string | undefined;
   /** Database security group id (passed through from DatabaseStack). */
   securityGroupId?: string | undefined;
   /** VPC for Lambda placement (passed from DatabaseStack). */
@@ -190,7 +191,8 @@ export class ApiStack extends Stack {
       distributionDomainName,
       databaseSource: explicitDatabaseSource,
       databaseUrlSecretArn,
-      jwtSource: explicitJwtSource,
+      jwtSecretArn,
+      jwtSecretPreviousArn,
       securityGroupId,
     } = props;
 
@@ -228,69 +230,74 @@ export class ApiStack extends Stack {
       };
     }
 
-    // PR 2: branch the DATABASE_URL / JWT_SECRET wiring at the adapter boundary.
-    // `plain-env` carries literal values (localstack); the AWS branches either
-    // pass a Secrets Manager ARN or an SSM SecureString parameter name that
-    // the Lambda resolves at cold start via the AWS SDK.
+    // PR 2: branch the DATABASE_URL wiring at the adapter boundary.
+    // `plain-env` carries a literal URL (localstack); `secret-arn` constructs
+    // DATABASE_URL via Fn::Join from the DB secret JSON fields at synth time.
     const databaseSource: DatabaseSource =
       explicitDatabaseSource ??
       (databaseUrlSecretArn !== undefined
         ? { kind: 'secret-arn', secretArn: databaseUrlSecretArn }
         : { kind: 'secret-arn', secretArn: '' });
-    const databaseUrlEnv =
-      databaseSource.kind === 'plain-env' ? databaseSource.databaseUrl : databaseSource.secretArn;
 
-    const isPlainEnvJwt = explicitJwtSource?.kind === 'plain-env';
-    const jwtSecretFromEnv =
-      process.env.JWT_SECRET && process.env.JWT_SECRET.length > 0
-        ? process.env.JWT_SECRET
-        : 'placeholder-replaced-by-ops';
-    const jwtSecretPreviousFromEnv =
-      process.env.JWT_SECRET_PREVIOUS && process.env.JWT_SECRET_PREVIOUS.length > 0
-        ? process.env.JWT_SECRET_PREVIOUS
-        : 'placeholder-empty-on-first-deploy';
-    const jwtSecret = isPlainEnvJwt
-      ? null
-      : new ssm.StringParameter(this, 'JwtSecret', {
-          parameterName: `/MercadoExpress/${stage}/jwt-secret`,
-          stringValue: jwtSecretFromEnv,
-          description: `MercadoExpress ${stage} JWT secret (HS256). Replace via the rotate-admin-password runbook.`,
-          // TODO: migrate to Secrets Manager or KMS-encrypted SSM.
-          // CDK's StringParameter with SECURE_STRING does not auto-generate the
-          // KmsKeyId on the CfnParameter — it must be passed explicitly, but CDK's
-          // L2 construct does not wire encryptionKey through to the CfnParameter.
-          type: ssm.ParameterType.STRING,
-        });
-    const jwtSecretPrevious = isPlainEnvJwt
-      ? null
-      : new ssm.StringParameter(this, 'JwtSecretPrevious', {
-          parameterName: `/MercadoExpress/${stage}/jwt-secret-previous`,
-          stringValue: jwtSecretPreviousFromEnv,
-          description: `MercadoExpress ${stage} JWT previous secret (HS256) — used during the rotation overlap window.`,
-          // TODO: migrate to Secrets Manager or KMS-encrypted SSM.
-          // CDK's StringParameter with SECURE_STRING does not auto-generate the
-          // KmsKeyId on the CfnParameter — it must be passed explicitly, but CDK's
-          // L2 construct does not wire encryptionKey through to the CfnParameter.
-          type: ssm.ParameterType.STRING,
-        });
+    // Build DATABASE_URL via Fn::Join from secret fields. CDK emits
+    // {{resolve:secretsmanager:arn:SecretString:field::}} for each token; CFN
+    // resolves them at deploy time. No runtime GetSecretValue call.
+    const databaseUrlValue =
+      databaseSource.kind === 'plain-env'
+        ? databaseSource.databaseUrl
+        : (() => {
+            // CDK's Fn.join signature is typed `string[]` but accepts IResolvable tokens
+            // at runtime. Suppress lint for the local array cast.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const urlParts: any[] = [
+              'postgresql://',
+              secretsmanager.Secret.fromSecretCompleteArn(
+                this,
+                'DbSecretRef',
+                databaseSource.secretArn,
+              ).secretValueFromJson('username'),
+              ':',
+              secretsmanager.Secret.fromSecretCompleteArn(
+                this,
+                'DbSecretRef',
+                databaseSource.secretArn,
+              ).secretValueFromJson('password'),
+              '@',
+              secretsmanager.Secret.fromSecretCompleteArn(
+                this,
+                'DbSecretRef',
+                databaseSource.secretArn,
+              ).secretValueFromJson('host'),
+              ':',
+              secretsmanager.Secret.fromSecretCompleteArn(
+                this,
+                'DbSecretRef',
+                databaseSource.secretArn,
+              ).secretValueFromJson('port'),
+              '/',
+              secretsmanager.Secret.fromSecretCompleteArn(
+                this,
+                'DbSecretRef',
+                databaseSource.secretArn,
+              ).secretValueFromJson('dbname'),
+            ];
+            return Fn.join('', urlParts);
+          })();
 
-    const jwtSource: JwtSource =
-      explicitJwtSource ??
-      (jwtSecret && jwtSecretPrevious
-        ? {
-            kind: 'ssm-parameter',
-            parameterName: jwtSecret.parameterName,
-            previousParameterName: jwtSecretPrevious.parameterName,
-          }
-        : {
-            kind: 'ssm-parameter',
-            parameterName: `/MercadoExpress/${stage}/jwt-secret`,
-            previousParameterName: `/MercadoExpress/${stage}/jwt-secret-previous`,
-          });
-    const jwtSecretEnv =
-      jwtSource.kind === 'plain-env' ? jwtSource.secret : jwtSource.parameterName;
-    const jwtSecretPreviousEnv =
-      jwtSource.kind === 'plain-env' ? jwtSource.previousSecret : jwtSource.previousParameterName;
+    // JWT secrets — direct SecretValue refs from Secrets Manager ARNs passed
+    // as props. CDK synthesises {{resolve:secretsmanager:...}} in the template.
+    const jwtSecretRef =
+      jwtSecretArn !== undefined
+        ? secretsmanager.Secret.fromSecretCompleteArn(this, 'JwtSecretRef', jwtSecretArn)
+        : null;
+    const jwtSecretPreviousRef =
+      jwtSecretPreviousArn !== undefined
+        ? secretsmanager.Secret.fromSecretCompleteArn(
+            this,
+            'JwtSecretPreviousRef',
+            jwtSecretPreviousArn,
+          )
+        : null;
 
     const reservedConcurrency = infraConfig.reservedConcurrencyByStage[stage];
 
@@ -323,15 +330,15 @@ export class ApiStack extends Stack {
         ...(props.vpc
           ? {
               vpc: props.vpc,
-              vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
-              allowPublicSubnet: true,
+              vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
             }
           : {}),
         environment: {
           STAGE: stage,
-          DATABASE_URL: databaseUrlEnv,
-          JWT_SECRET: jwtSecretEnv,
-          JWT_SECRET_PREVIOUS: jwtSecretPreviousEnv,
+          DATABASE_URL: databaseUrlValue,
+          JWT_SECRET: jwtSecretRef?.secretValue.unsafeUnwrap() ?? 'placeholder-replaced-by-ops',
+          JWT_SECRET_PREVIOUS:
+            jwtSecretPreviousRef?.secretValue.unsafeUnwrap() ?? 'placeholder-empty-on-first-deploy',
           JWT_OVERLAP_SECONDS: '3600',
           TRUSTED_PROXY_DEPTH: '0',
           LOG_LEVEL: 'info',

@@ -30,8 +30,7 @@ import { Stack, type StackProps, CfnOutput, RemovalPolicy, Tags, Duration } from
 import type { Construct } from 'constructs';
 import * as rds from 'aws-cdk-lib/aws-rds';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
-import type * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
-import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { type Stage, infraConfig } from '../config.js';
 import { MigrationsCustomResource } from '../constructs/migrations.js';
 
@@ -42,8 +41,12 @@ export interface DatabaseStackProps extends StackProps {
 export class DatabaseStack extends Stack {
   /** CFN output — ARN of the Secrets Manager secret holding the DB master credentials. */
   public readonly databaseUrlSecretArn: string;
-  /** CFN output — name of the SSM SecureString parameter holding the admin password. */
-  public readonly adminPasswordParameterName: string;
+  /** ARN of the Secrets Manager secret holding the admin bootstrap password. */
+  public readonly adminPasswordSecretArn: string;
+  /** ARN of the Secrets Manager secret holding the JWT signing secret. */
+  public readonly jwtSecretArn: string;
+  /** ARN of the Secrets Manager secret holding the previous JWT signing secret. */
+  public readonly jwtSecretPreviousArn: string;
   /** CFN output — the security group id that grants Lambda ingress to 5432. */
   public readonly securityGroupId: string;
 
@@ -55,21 +58,15 @@ export class DatabaseStack extends Stack {
 
     const { stage } = props;
 
-    // Self-contained VPC — sufficient for the MVP. Two AZs across public
-    // subnets only (no NAT, no private subnets) because the Lambdas are
-    // deployed into public subnets by API Gateway HTTP API integration.
-    //
-    // We use `new Vpc` (NOT `Vpc.fromLookup`) and pin AZs explicitly so
-    // `cdk synth` does not trigger a context-provider lookup (which would
-    // require AWS credentials). The two us-east-1 AZs are stable enough
-    // for MVP; prod can override via context if needed.
+    // VPC with PUBLIC and PRIVATE_ISOLATED subnets. Lambdas deploy into
+    // PRIVATE_ISOLATED subnets and reach AWS services via VPC Interface
+    // Endpoints (Secrets Manager, SSM) and the S3 Gateway Endpoint.
+    // This replaces the prior public-subnet-only layout that caused network
+    // timeouts (Lambdas had no NAT, no IGW route, no access to AWS APIs).
     // Cast through `unknown` to bypass the `exactOptionalPropertyTypes` strictness
     // mismatch between `Vpc` (concrete, optional fields) and `IVpc` (interface,
     // required fields). Both objects expose the same shape we actually use.
     const vpc = new ec2.Vpc(this, 'DefaultVpc', {
-      // CDK forbids combining `availabilityZones` and `maxAzs` so we
-      // omit `maxAzs`. The two us-east-1 AZs are stable enough for MVP;
-      // prod can override via context if needed.
       availabilityZones: ['us-east-1a', 'us-east-1b'],
       subnetConfiguration: [
         {
@@ -77,8 +74,32 @@ export class DatabaseStack extends Stack {
           name: 'Public',
           subnetType: ec2.SubnetType.PUBLIC,
         },
+        {
+          cidrMask: 24,
+          name: 'Private',
+          subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
+        },
       ],
     }) as unknown as ec2.IVpc;
+
+    // Interface Endpoints — give private-subnet Lambdas a private path to
+    // AWS services without going through the public internet or paying for NAT.
+    // Both use privateDnsEnabled so default AWS service DNS names resolve to
+    // the endpoint ENI from inside the VPC (e.g. secretsmanager.us-east-1.amazonaws.com).
+    vpc.addInterfaceEndpoint('SecretsManagerEndpoint', {
+      service: ec2.InterfaceVpcEndpointAwsService.SECRETS_MANAGER,
+      privateDnsEnabled: true,
+      subnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+    });
+    vpc.addInterfaceEndpoint('SsmEndpoint', {
+      service: ec2.InterfaceVpcEndpointAwsService.SSM,
+      privateDnsEnabled: true,
+      subnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+    });
+    // S3 Gateway Endpoint (free — no per-hour charge).
+    vpc.addGatewayEndpoint('S3Endpoint', {
+      service: ec2.GatewayVpcEndpointAwsService.S3,
+    });
 
     const databaseSecurityGroup = new ec2.SecurityGroup(this, 'DatabaseSecurityGroup', {
       vpc,
@@ -154,41 +175,57 @@ export class DatabaseStack extends Stack {
     // the operational runbook can find it.
     Tags.of(database).add('ExtensionVector', 'pgvector');
 
-    // Admin bootstrap password — stored as an SSM SecureString (per
-    // PR 1 review BLOCKER C3). Initial value falls back to a placeholder
-    // if ADMIN_PASSWORD env var is missing; the operations runbook
-    // `runbook/rotate-admin-password.md` rotates real passwords in via
-    // `aws ssm put-parameter`. The migrations Lambda reads this parameter
-    // via `ssm.StringParameter.valueForStringParameter(...)` and the PR 2a
-    // seed bcrypt-hashes it into the `users` table.
-    const adminPasswordFromEnv =
-      process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD.length > 0
-        ? process.env.ADMIN_PASSWORD
-        : 'placeholder-replaced-by-ops';
-    const adminPasswordParameter = new ssm.StringParameter(this, 'AdminPasswordParameter', {
-      parameterName: `/MercadoExpress/${stage}/admin-password`,
-      stringValue: adminPasswordFromEnv,
-      description: `MercadoExpress ${stage} admin (usuario seed) bootstrap password. Rotate via runbook/rotate-admin-password.md.`,
-      // TODO: migrate to Secrets Manager or KMS-encrypted SSM.
-      // CDK's StringParameter with SECURE_STRING does not auto-generate the
-      // KmsKeyId on the CfnParameter — it must be passed explicitly, but CDK's
-      // L2 construct does not wire encryptionKey through to the CfnParameter.
-      // Until migrated, secrets are stored as plaintext SSM String parameters.
-      type: ssm.ParameterType.STRING,
+    // Admin bootstrap password — migrated from SSM String to Secrets Manager
+    // with KMS-backed encryption. No plaintext value in SSM, no runtime SDK call.
+    // The SecretValue ref is passed directly into Lambda env vars at deploy time
+    // (synthesized as {{resolve:secretsmanager:...}} in CFN), replacing the prior
+    // SSM GetParameter-at-runtime pattern (PR 1 review BLOCKER C3).
+    const adminPassword = new secretsmanager.Secret(this, 'AdminPassword', {
+      secretName: `MercadoExpress-${stage}-admin-password`,
+      description: `MercadoExpress ${stage} admin (usuario seed) bootstrap password. Rotate via Secrets Manager.`,
+      generateSecretString: {
+        excludePunctuation: true,
+        passwordLength: 32,
+        includeSpace: false,
+      },
     });
-    this.adminPasswordParameterName = adminPasswordParameter.parameterName;
+    this.adminPasswordSecretArn = adminPassword.secretArn;
 
-    // The lambdas carry the Secrets Manager ARN (not the resolved URL)
-    // in the DATABASE_URL env var and call GetSecretValue at cold start
-    // to construct the connection string. This keeps the password in
-    // Secrets Manager and out of CFN env-var plaintext.
+    // JWT signing secrets — migrated from SSM String to Secrets Manager.
+    // These fix the latent bug where the Lambda received the SSM parameter
+    // NAME (not the resolved secret value) as JWT_SECRET, causing JWT
+    // verification to fail silently (PR 1 review BLOCKER C1).
+    const jwtSecret = new secretsmanager.Secret(this, 'JwtSecret', {
+      secretName: `MercadoExpress-${stage}-jwt-secret`,
+      description: `MercadoExpress ${stage} JWT secret (HS256). Used by BC Lambdas. Rotate via Secrets Manager.`,
+      generateSecretString: {
+        excludePunctuation: true,
+        passwordLength: 64,
+        includeSpace: false,
+      },
+    });
+    this.jwtSecretArn = jwtSecret.secretArn;
+
+    const jwtSecretPrevious = new secretsmanager.Secret(this, 'JwtSecretPrevious', {
+      secretName: `MercadoExpress-${stage}-jwt-secret-previous`,
+      description: `MercadoExpress ${stage} JWT previous secret (HS256) — used during rotation overlap window.`,
+      generateSecretString: {
+        excludePunctuation: true,
+        passwordLength: 64,
+        includeSpace: false,
+      },
+    });
+    this.jwtSecretPreviousArn = jwtSecretPrevious.secretArn;
+
+    // The DB master credentials secret ARN is exported for downstream stacks
+    // to construct DATABASE_URL at deploy time via Fn::Join (no runtime SDK call).
     this.databaseUrlSecretArn = dbSecret.secretArn;
     this.securityGroupId = databaseSecurityGroup.securityGroupId;
 
     new CfnOutput(this, 'DatabaseSecretArn', {
       value: this.databaseUrlSecretArn,
       description:
-        'Secrets Manager ARN carrying the DB master credentials JSON. Lambdas call GetSecretValue at cold start to materialize DATABASE_URL.',
+        'Secrets Manager ARN carrying the DB master credentials JSON. Used by ApiStack and Migrations to construct DATABASE_URL at CDK synth time via Fn::Join (no runtime SDK calls).',
       exportName: `MercadoExpress-${stage}-DatabaseSecretArn`,
     });
     new CfnOutput(this, 'SecurityGroupId', {
@@ -197,15 +234,13 @@ export class DatabaseStack extends Stack {
       exportName: `MercadoExpress-${stage}-DatabaseSecurityGroupId`,
     });
 
-    // PR 2a BLOCKER C1 closeout: instantiate MigrationsCustomResource inside
-    // the DatabaseStack so CDK's SSM StringParameter.valueForStringParameter
-    // has a Stack scope. The custom resource runs prisma migrate + seed
-    // against the DB once it is available. Downstream stacks depend on it via
-    // api.addDependency(database.migrationsNode).
+    // Instantiate MigrationsCustomResource inside the DatabaseStack.
+    // The custom resource runs prisma migrate + seed against the DB once it
+    // is available. Downstream stacks depend on it via api.addDependency(database.migrationsNode).
     const migrations = new MigrationsCustomResource(this, 'Migrations', {
       stage,
       databaseUrlSecretArn: this.databaseUrlSecretArn,
-      adminPasswordParameterName: this.adminPasswordParameterName,
+      adminPasswordSecretArn: this.adminPasswordSecretArn,
       vpc,
     });
     // Expose the migrations construct node so other stacks can add it as a dependency.

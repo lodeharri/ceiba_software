@@ -119,9 +119,15 @@ export function createStageStacks(app: App, stage: Stage, props?: StackProps): S
     stage,
     corsAllowOrigin,
     databaseSource,
-    jwtSource,
+    jwtSource, // kept for backward compat; jwtSecretArn wins when both are set
     securityGroupId: database?.securityGroupId ?? '',
     vpc: database?.vpc,
+    databaseUrlSecretArn: database?.databaseUrlSecretArn,
+    // Pass the new Secrets Manager ARNs when available (dev/prod).
+    // Pass undefined when database is absent (localstack) so ApiStack's
+    // fallback to jwtSource kicks in correctly.
+    jwtSecretArn: database?.jwtSecretArn,
+    jwtSecretPreviousArn: database?.jwtSecretPreviousArn,
     ...stackProps,
   });
 
