@@ -22,7 +22,12 @@ jobs:
     timeout-minutes: 60
     environment:
       name: dev
-      url: https://d111111abcdef8.cloudfront.net
+      url: https://<API_GATEWAY_URL>/api/v1/health # placeholder, update post-deploy
+      deployment_branch_policy:
+        protected_branches: false
+        custom_branch_policies: true
+      reviewers:
+        - harri
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -54,3 +59,33 @@ jobs:
 
       - name: cdk deploy MercadoExpress-dev
         run: pnpm --filter infra exec cdk deploy MercadoExpress-dev --require-approval never
+
+      - name: Smoke test (post-deploy)
+        if: success()
+        run: |
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name MercadoExpress-dev \
+            --query 'Stacks[0].Outputs[?OutputKey==`HttpApiUrl`].OutputValue' \
+            --output text)
+          echo "Smoke testing $API_URL/api/v1/health..."
+          for i in 1 2 3 4 5; do
+            HTTP=$(curl -sS -o /dev/null -w '%{http_code}' "$API_URL/api/v1/health" || true)
+            if [ "$HTTP" = "200" ]; then
+              echo "health OK ($HTTP)"; break
+            fi
+            echo "attempt $i: HTTP $HTTP, retrying in 10s..."; sleep 10
+          done
+          if [ "$HTTP" != "200" ]; then
+            echo "health FAILED after 5 attempts"; exit 1
+          fi
+          # Smoke test login endpoint: expect 401 (invalid credentials), proving
+          # the API is wired to the DB and JWT is working.
+          HTTP=$(curl -sS -o /dev/null -w '%{http_code}' \
+            -X POST "$API_URL/api/v1/auth/login" \
+            -H "Content-Type: application/json" \
+            -d '{"username":"smoke","password":"smoke"}')
+          if [ "$HTTP" = "401" ]; then
+            echo "login smoke OK (got 401 for bad creds, API is wired)"
+          else
+            echo "login smoke FAILED: expected 401, got $HTTP"; exit 1
+          fi

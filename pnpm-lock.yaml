@@ -11,6 +11,9 @@ importers:
 
   .:
     devDependencies:
+      '@aws-sdk/client-ssm':
+        specifier: ^3.1084.0
+        version: 3.1084.0
       '@commitlint/cli':
         specifier: ^19.6.0
         version: 19.8.1(@types/node@20.19.43)(typescript@5.9.3)
