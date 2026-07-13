@@ -12,6 +12,7 @@ interface Props {
   page?: number;
   size?: number;
   total?: number;
+  hasMore?: boolean;
 }
 
 withDefaults(defineProps<Props>(), {
@@ -19,6 +20,7 @@ withDefaults(defineProps<Props>(), {
   page: 1,
   size: 50,
   total: 0,
+  hasMore: false,
 });
 
 const emit = defineEmits<{ (e: 'page', page: number): void }>();
@@ -120,7 +122,7 @@ const to = (page: number, size: number, total: number) => Math.min(page * size, 
           {{ $t('pagination.previous') }}
         </button>
         <button
-          :disabled="page * size >= total"
+          :disabled="!hasMore"
           class="px-3 py-1 border border-muted rounded-atom disabled:opacity-40 hover:border-primary transition-colors"
           @click="emit('page', page + 1)"
         >

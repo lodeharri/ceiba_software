@@ -15,7 +15,9 @@ import type {
 export const useOrdersStore = defineStore('orders', () => {
   const items = ref<Order[]>([]);
   const page = ref(1);
+  const size = ref(20);
   const total = ref(0);
+  const hasMore = ref(false);
   const current = ref<Order | null>(null);
   const statusFilter = ref<string | undefined>(undefined);
   const loading = ref(false);
@@ -30,6 +32,8 @@ export const useOrdersStore = defineStore('orders', () => {
       items.value = result.items;
       total.value = result.total;
       page.value = result.page;
+      size.value = result.size;
+      hasMore.value = result.hasMore;
     } catch (e) {
       error.value = extractMessage(e);
       throw e;
@@ -128,7 +132,9 @@ export const useOrdersStore = defineStore('orders', () => {
   return {
     items,
     page,
+    size,
     total,
+    hasMore,
     current,
     statusFilter,
     loading,

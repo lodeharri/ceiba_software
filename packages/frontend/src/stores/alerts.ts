@@ -10,7 +10,9 @@ import type { AlertStatus } from '@mercadoexpress/shared/primitives/alert-status
 export const useAlertsStore = defineStore('alerts', () => {
   const items = ref<Alert[]>([]);
   const page = ref(1);
+  const size = ref(20);
   const total = ref(0);
+  const hasMore = ref(false);
   const current = ref<Alert | null>(null);
   const statusFilter = ref<AlertStatus | undefined>(undefined);
   const loading = ref(false);
@@ -25,6 +27,8 @@ export const useAlertsStore = defineStore('alerts', () => {
       items.value = result.items;
       total.value = result.total;
       page.value = result.page;
+      size.value = result.size;
+      hasMore.value = result.hasMore;
     } catch (e) {
       error.value = extractMessage(e);
       throw e;
@@ -54,7 +58,9 @@ export const useAlertsStore = defineStore('alerts', () => {
   return {
     items,
     page,
+    size,
     total,
+    hasMore,
     current,
     statusFilter,
     loading,

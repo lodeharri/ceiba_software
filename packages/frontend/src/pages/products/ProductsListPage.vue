@@ -11,6 +11,7 @@ import ProductTable from '@/components/organisms/ProductTable.vue';
 import FilterStrip from '@/components/molecules/FilterStrip.vue';
 import PageHeader from '@/components/molecules/PageHeader.vue';
 import Button from '@/components/atoms/Button.vue';
+import PaginationControl from '@/components/molecules/PaginationControl.vue';
 import type { ProductFilters } from '@/services/products';
 
 const products = useProductsStore();
@@ -24,7 +25,12 @@ onMounted(async () => {
 });
 
 async function handleSearch() {
+  filters.value.page = 1;
   await products.fetchList(filters.value);
+}
+
+async function goToPage(p: number) {
+  await products.fetchList({ ...filters.value, page: p });
 }
 
 function goToCreate() {
@@ -69,14 +75,15 @@ function goToCreate() {
       />
 
       <!-- Pagination -->
-      <div v-if="products.total > 0" class="mt-4 text-sm text-text-muted text-center">
-        {{
-          $t('common.showing', {
-            from: (products.page - 1) * products.size + 1,
-            to: Math.min(products.page * products.size, products.total),
-            total: products.total,
-          })
-        }}
+      <div v-if="products.total > 0" class="mt-4">
+        <PaginationControl
+          :page="products.page"
+          :size="products.size"
+          :total="products.total"
+          :has-more="products.hasMore"
+          :disabled="products.loading"
+          @update:page="goToPage"
+        />
       </div>
     </div>
   </div>
