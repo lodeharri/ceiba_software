@@ -161,12 +161,14 @@ export class DatabaseStack extends Stack {
         engine: rds.DatabaseInstanceEngine.postgres({
           version: rds.PostgresEngineVersion.VER_16,
         }),
-        parameters: {},
+        parameters: {
+          shared_preload_libraries: 'vector',
+        },
       }),
       // Publicly accessible is fine in MVP (single-VPC, single-region);
       // prod should switch this to `false` once we have a VPC peering
       // setup with on-prem. Tracked as a follow-up.
-      publiclyAccessible: stage === 'dev',
+      publiclyAccessible: false,
     });
 
     // RDS surfaces the pgvector extension via the parameter group above.
@@ -182,11 +184,15 @@ export class DatabaseStack extends Stack {
     // SSM GetParameter-at-runtime pattern (PR 1 review BLOCKER C3).
     const adminPassword = new secretsmanager.Secret(this, 'AdminPassword', {
       secretName: `MercadoExpress-${stage}-admin-password`,
-      description: `MercadoExpress ${stage} admin (usuario seed) bootstrap password. Rotate via Secrets Manager.`,
+      description: `MercadoExpress ${stage} admin (usuario seed) bootstrap password. Stored as JSON {"password":"..."}. Rotate via Secrets Manager.`,
       generateSecretString: {
         excludePunctuation: true,
         passwordLength: 32,
         includeSpace: false,
+        secretStringTemplate: JSON.stringify({
+          password: 'placeholder-will-be-overwritten-by-cdk',
+        }),
+        generateStringKey: 'password',
       },
     });
     this.adminPasswordSecretArn = adminPassword.secretArn;

@@ -4,6 +4,7 @@ import { CategoryNotFoundError } from '../domain/errors/category-not-found.js';
 import { SkuAlreadyExistsError } from '../domain/errors/sku-already-exists.js';
 import type { ProductRepository, ProductProps } from '../domain/ports/product-repository.js';
 import type { CategoryReadRepository } from '../domain/ports/category-repository.js';
+import type { AlertOpenerPort } from '../../alerts/domain/ports/alert-opener-port.js';
 
 const CAT = '00000000-0000-4000-8000-000000000001';
 const VALID_INPUT = {
@@ -20,6 +21,7 @@ function makeRepos(opts: { existing?: ProductProps; hasCategory?: boolean } = {}
   products: ProductRepository;
   categories: CategoryReadRepository;
   created: ProductProps[];
+  alertOpener: AlertOpenerPort;
 } {
   const created: ProductProps[] = [];
   const products: ProductRepository = {
@@ -53,13 +55,18 @@ function makeRepos(opts: { existing?: ProductProps; hasCategory?: boolean } = {}
       return [{ id: CAT, name: 'Bebidas' }];
     },
   };
-  return { products, categories, created };
+  const alertOpener: AlertOpenerPort = {
+    async openIfAbsent(_productId) {
+      // no-op stub — tests use stock=100, stockMin=50 so this is never called
+    },
+  };
+  return { products, categories, created, alertOpener };
 }
 
 describe('CreateProductUseCase', () => {
   it('happy path: validates, checks FK + SKU, and persists', async () => {
-    const { products, categories, created } = makeRepos();
-    const useCase = new CreateProductUseCase(products, categories);
+    const { products, categories, created, alertOpener } = makeRepos();
+    const useCase = new CreateProductUseCase(products, categories, alertOpener);
     const product = await useCase.execute(VALID_INPUT);
     expect(product.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4/);
     expect(product.sku).toBe('BEB-001'); // upper-cased by aggregate
@@ -68,16 +75,29 @@ describe('CreateProductUseCase', () => {
   });
 
   it('throws SkuAlreadyExistsError on duplicate SKU', async () => {
-    const { products, categories } = makeRepos({
+    const { products, categories, alertOpener } = makeRepos({
       existing: { ...VALID_INPUT, id: 'existing-id' },
     });
-    const useCase = new CreateProductUseCase(products, categories);
+    const useCase = new CreateProductUseCase(products, categories, alertOpener);
     await expect(useCase.execute(VALID_INPUT)).rejects.toBeInstanceOf(SkuAlreadyExistsError);
   });
 
   it('throws CategoryNotFoundError when categoryId is unknown', async () => {
-    const { products, categories } = makeRepos({ hasCategory: false });
-    const useCase = new CreateProductUseCase(products, categories);
+    const { products, categories, alertOpener } = makeRepos({ hasCategory: false });
+    const useCase = new CreateProductUseCase(products, categories, alertOpener);
     await expect(useCase.execute(VALID_INPUT)).rejects.toBeInstanceOf(CategoryNotFoundError);
+  });
+
+  it('does not throw when alert opener fails (best-effort graceful degradation)', async () => {
+    const { products, categories, created } = makeRepos();
+    const alertOpener: AlertOpenerPort = {
+      async openIfAbsent(_productId: string) {
+        throw new Error('Prisma connection lost');
+      },
+    };
+    const useCase = new CreateProductUseCase(products, categories, alertOpener);
+    const lowStockInput = { ...VALID_INPUT, stock: 0, stockMin: 10 };
+    await expect(useCase.execute(lowStockInput)).resolves.toBeDefined();
+    expect(created).toHaveLength(1);
   });
 });

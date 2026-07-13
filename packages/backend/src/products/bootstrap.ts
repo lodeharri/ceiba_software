@@ -15,6 +15,7 @@ import { UpdateProductUseCase } from './application/update-product.js';
 import { PrismaProductRepository } from './infrastructure/prisma-product-repository.js';
 import { PrismaCategoryReadRepository } from './infrastructure/prisma-category-read-repository.js';
 import { PrismaAlertReadModel } from './infrastructure/prisma-alert-read-model.js';
+import { PrismaAlertOpenerPort } from '../alerts/infrastructure/prisma-alert-opener-port.js';
 import { createLogger } from '../shared/logger.js';
 import type { Logger as PinoLogger } from 'pino';
 
@@ -42,14 +43,16 @@ export function bootstrapProducts(prismaOverride?: PrismaLike): ProductsBootstra
     typeof PrismaProductRepository
   >[0] &
     ConstructorParameters<typeof PrismaCategoryReadRepository>[0] &
-    ConstructorParameters<typeof PrismaAlertReadModel>[0];
+    ConstructorParameters<typeof PrismaAlertReadModel>[0] &
+    PrismaLike;
   const productRepo = new PrismaProductRepository(prisma);
   const categoryRead = new PrismaCategoryReadRepository(prisma);
   const alertReadModel = new PrismaAlertReadModel(prisma);
+  const alertOpener = new PrismaAlertOpenerPort(prisma);
   const bootstrap: ProductsBootstrap = {
     prisma: prismaOverride ?? getPrismaClient(),
     logger: createLogger().child({ bc: 'products' }),
-    createProduct: new CreateProductUseCase(productRepo, categoryRead),
+    createProduct: new CreateProductUseCase(productRepo, categoryRead, alertOpener),
     listProducts: new ListProductsUseCase(productRepo, alertReadModel),
     getProduct: new GetProductUseCase(productRepo, alertReadModel),
     updateProduct: new UpdateProductUseCase(productRepo, categoryRead, alertReadModel),

@@ -7,6 +7,7 @@
 -- migrations (proposal §11.3 rollback contract — no DROP COLUMN / ALTER TABLE … DROP).
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS vector;
 
 -- PR 4 fix: the schema declares `enum Role { admin }`; the migration must
 -- emit the Postgres type so Prisma's `user.upsert({ role: 'admin' })`

@@ -109,7 +109,7 @@ export class ObservabilityStack extends Stack {
           threshold,
           comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
           evaluationPeriods: 1,
-          alarmDescription: `${functionName} concurrent executions > 80% of reserved (${reserved}).`,
+          alarmDescription: `${functionName} concurrent executions > 80% of configured reserve (${reserved}).`,
         }).addAlarmAction({ bind: () => ({ alarmActionArn: this.alarmTopic.topicArn }) } as never);
       }
     }
