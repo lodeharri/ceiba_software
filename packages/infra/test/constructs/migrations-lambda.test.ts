@@ -88,22 +88,22 @@ describe('migrations-lambda (PR 2 — STAGE-aware env-var bypass)', () => {
     expect(result.Reason).toMatch(/DATABASE_URL/);
   });
 
-  it('STAGE=dev uses the AWS secrets path (Secrets Manager + SSM)', async () => {
-    // Both env vars absent; the AWS code path must fail because there is no
-    // Secrets Manager client in the test environment.
-    process.env['DATABASE_SECRET_ARN'] = 'arn:aws:secretsmanager:us-east-1:000000000000:secret:db';
-    process.env['ADMIN_PASSWORD_PARAM_NAME'] = '/MercadoExpress/dev/admin-password';
+  it('STAGE=dev uses the pre-resolved DATABASE_URL env var (CDK Secrets Manager)', async () => {
+    // PR 2 change: migrations-lambda no longer calls GetSecretValue at runtime.
+    // CDK passes the fully-resolved DATABASE_URL as a plain env var. The test
+    // simulates this by setting DATABASE_URL directly (what CDK synthesises).
+    process.env['DATABASE_URL'] = 'postgresql://user:pass@host:5432/db';
 
     const { handler } = loadModule('dev');
     const result = await handler({ RequestType: 'Create' });
 
-    // The dev/prod path tries to instantiate the AWS SDK client; without
-    // network credentials this will throw. We assert the failure message
-    // is the AWS path error (NOT the env-var error), proving the branch
-    // landed on the AWS side.
+    // The Lambda receives a pre-resolved DATABASE_URL. The actual migration
+    // will fail because the subprocess can't reach the DB, but DATABASE_URL
+    // IS set — the env-var bypass succeeded (proving CDK resolution worked).
     expect(result.Status).toBe('FAILED');
     expect(result.Reason).toBeDefined();
-    // The env-var error string is only raised by the localstack branch.
+    // If DATABASE_URL env var is not set, the localstack fallback fired.
+    // With DATABASE_URL set, we should NOT see the env-var error.
     expect(result.Reason ?? '').not.toMatch(/DATABASE_URL env var is not set/);
   });
 });

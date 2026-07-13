@@ -53,7 +53,7 @@ describe('ApiStack', () => {
     const stack = new ApiStack(app, 'ApiStackTest', {
       stage: 'dev',
       distributionDomainName: 'd111111abcdef8.cloudfront.net',
-      databaseUrlSecretArn: 'arn:aws:ssm:us-east-1:000000000000:parameter/db',
+      databaseUrlSecretArn: 'arn:aws:secretsmanager:us-east-1:000000000000:secret:db-abcdef',
       securityGroupId: 'sg-00000000',
       env: PLACEHOLDER_ENV,
     });
@@ -77,7 +77,7 @@ describe('ApiStack', () => {
     const stack = new ApiStack(app, 'ApiStackTest2', {
       stage: 'dev',
       distributionDomainName: 'd111111abcdef8.cloudfront.net',
-      databaseUrlSecretArn: 'arn:aws:ssm:us-east-1:000000000000:parameter/db',
+      databaseUrlSecretArn: 'arn:aws:secretsmanager:us-east-1:000000000000:secret:db-abcdef',
       securityGroupId: 'sg-00000000',
       env: PLACEHOLDER_ENV,
     });
@@ -98,7 +98,7 @@ describe('ApiStack', () => {
     const stack = new ApiStack(app, 'ApiStackTestDev', {
       stage: 'dev',
       distributionDomainName: 'd111111abcdef8.cloudfront.net',
-      databaseUrlSecretArn: 'arn:aws:ssm:us-east-1:000000000000:parameter/db',
+      databaseUrlSecretArn: 'arn:aws:secretsmanager:us-east-1:000000000000:secret:db-abcdef',
       securityGroupId: 'sg-00000000',
       env: PLACEHOLDER_ENV,
     });
@@ -115,7 +115,7 @@ describe('ApiStack', () => {
     const stack = new ApiStack(app, 'ApiStackTestProd', {
       stage: 'prod',
       distributionDomainName: 'd222222abcdef8.cloudfront.net',
-      databaseUrlSecretArn: 'arn:aws:ssm:us-east-1:000000000000:parameter/db',
+      databaseUrlSecretArn: 'arn:aws:secretsmanager:us-east-1:000000000000:secret:db-abcdef',
       securityGroupId: 'sg-00000000',
       env: PLACEHOLDER_ENV,
     });
@@ -132,7 +132,7 @@ describe('ApiStack', () => {
     const stack = new ApiStack(app, 'ApiStackTestLogs', {
       stage: 'dev',
       distributionDomainName: 'd111111abcdef8.cloudfront.net',
-      databaseUrlSecretArn: 'arn:aws:ssm:us-east-1:000000000000:parameter/db',
+      databaseUrlSecretArn: 'arn:aws:secretsmanager:us-east-1:000000000000:secret:db-abcdef',
       securityGroupId: 'sg-00000000',
       env: PLACEHOLDER_ENV,
     });
@@ -151,7 +151,7 @@ describe('ApiStack', () => {
     const stack = new ApiStack(app, 'ApiStackTestRoutes', {
       stage: 'dev',
       distributionDomainName: 'd111111abcdef8.cloudfront.net',
-      databaseUrlSecretArn: 'arn:aws:ssm:us-east-1:000000000000:parameter/db',
+      databaseUrlSecretArn: 'arn:aws:secretsmanager:us-east-1:000000000000:secret:db-abcdef',
       securityGroupId: 'sg-00000000',
       env: PLACEHOLDER_ENV,
     });
@@ -180,7 +180,7 @@ describe('ApiStack', () => {
     const stack = new ApiStack(app, 'ApiStackTestInventory', {
       stage: 'dev',
       distributionDomainName: 'd111111abcdef8.cloudfront.net',
-      databaseUrlSecretArn: 'arn:aws:ssm:us-east-1:000000000000:parameter/db',
+      databaseUrlSecretArn: 'arn:aws:secretsmanager:us-east-1:000000000000:secret:db-abcdef',
       securityGroupId: 'sg-00000000',
       env: PLACEHOLDER_ENV,
     });
@@ -200,7 +200,7 @@ describe('ApiStack', () => {
     const stack = new ApiStack(app, 'ApiStackTestAlerts', {
       stage: 'dev',
       distributionDomainName: 'd111111abcdef8.cloudfront.net',
-      databaseUrlSecretArn: 'arn:aws:ssm:us-east-1:000000000000:parameter/db',
+      databaseUrlSecretArn: 'arn:aws:secretsmanager:us-east-1:000000000000:secret:db-abcdef',
       securityGroupId: 'sg-00000000',
       env: PLACEHOLDER_ENV,
     });
@@ -222,7 +222,7 @@ describe('ApiStack', () => {
     const stack = new ApiStack(app, 'ApiStackTestOrders', {
       stage: 'dev',
       distributionDomainName: 'd111111abcdef8.cloudfront.net',
-      databaseUrlSecretArn: 'arn:aws:ssm:us-east-1:000000000000:parameter/db',
+      databaseUrlSecretArn: 'arn:aws:secretsmanager:us-east-1:000000000000:secret:db-abcdef',
       securityGroupId: 'sg-00000000',
       env: PLACEHOLDER_ENV,
     });

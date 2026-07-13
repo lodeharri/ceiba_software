@@ -18,7 +18,8 @@ import { Construct } from 'constructs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as cr from 'aws-cdk-lib/custom-resources';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import type * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import type * as rds from 'aws-cdk-lib/aws-rds';
 import * as path from 'node:path';
 import * as url from 'node:url';
 import type { Stage } from '../config.js';
@@ -27,11 +28,21 @@ import type { BundlingOptions } from 'aws-cdk-lib/aws-lambda-nodejs';
 
 export interface MigrationsCustomResourceProps {
   stage: Stage;
-  databaseUrlSecretArn: string;
-  /** ARN of the Secrets Manager secret carrying the admin bootstrap password. */
-  adminPasswordSecretArn: string;
+  /** Secrets Manager secret (rds.DatabaseSecret) carrying DB master credentials JSON. */
+  databaseUrlSecret: secretsmanager.ISecret;
+  /** Secrets Manager secret carrying the admin bootstrap password. */
+  adminPasswordSecret: secretsmanager.ISecret;
   /** VPC in which to place the migrations Lambda. */
   vpc: ec2.IVpc;
+  /**
+   * The RDS database instance. Passed explicitly so the Lambda's DependsOn can
+   * include the DB — the secret's SecretTargetAttachment depends on the DB,
+   * and the secret values are only populated once the DB exists. Without this,
+   * CloudFormation may resolve {{resolve:secretsmanager:...}} tokens before the
+   * DB populates the secret, causing CREATE_FAILED with
+   * "Could not find a value associated with JSONKey in SecretString".
+   */
+  databaseInstance: rds.IDatabaseInstance;
 }
 
 export class MigrationsCustomResource extends Construct {
@@ -40,20 +51,15 @@ export class MigrationsCustomResource extends Construct {
   public constructor(scope: Construct, id: string, props: MigrationsCustomResourceProps) {
     super(scope, id);
 
-    const { stage, databaseUrlSecretArn, adminPasswordSecretArn, vpc } = props;
+    const { stage, databaseUrlSecret, adminPasswordSecret, vpc, databaseInstance } = props;
 
-    // Reference the DB master credentials secret.
-    const dbSecretRef = secretsmanager.Secret.fromSecretCompleteArn(
-      this,
-      'MigrationsDbSecretRef',
-      databaseUrlSecretArn,
-    );
-    // Reference the admin password secret.
-    const adminPasswordRef = secretsmanager.Secret.fromSecretCompleteArn(
-      this,
-      'MigrationsAdminPasswordRef',
-      adminPasswordSecretArn,
-    );
+    // Use the ISecret objects directly so CDK can establish implicit dependencies.
+    // Previously we used fromSecretCompleteArn (imported) which broke the dependency
+    // graph — the Lambda's DependsOn omitted the secrets, causing CloudFormation to
+    // resolve {{resolve:secretsmanager:...}} before the secrets existed, crashing
+    // the stack with "Could not find a value associated with JSONKey in SecretString".
+    const dbSecretRef = databaseUrlSecret;
+    const adminPasswordRef = adminPasswordSecret;
 
     // Build DATABASE_URL via Fn::Join from secret JSON fields.
     // CDK synthesizes {{resolve:secretsmanager:arn:SecretString:field::}} for
@@ -164,14 +170,18 @@ export class MigrationsCustomResource extends Construct {
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
       // DATABASE_URL: pre-constructed at deploy time via Fn::Join of DB secret
       // fields. No runtime GetSecretValue call (BLOCKER C2 fix).
-      // ADMIN_PASSWORD: pre-resolved via SecretValue (no SSM GetParameter call).
+      // ADMIN_PASSWORD: pre-resolved via SecretValueFromJson (no SSM GetParameter call).
       // Both are CDK tokens that resolve to the actual values at deploy time.
       environment: {
         STAGE: stage,
         DATABASE_URL: migrationsDatabaseUrl,
         ADMIN_USERNAME: 'admin',
         ADMIN_EMAIL: 'admin@mercadoexpress.local',
-        ADMIN_PASSWORD: adminPasswordRef.secretValue.unsafeUnwrap(),
+        // Use secretValueFromJson('password') — unsafeUnwrap() on a Secret-constructed
+        // ISecret synthesizes {{resolve:...:SecretString::}} with NO field, causing CFN to
+        // fail with "Could not find a value associated with JSONKey in SecretString".
+        // secretValueFromJson('password') correctly synthesizes ...:SecretString:password::.
+        ADMIN_PASSWORD: adminPasswordRef.secretValueFromJson('password') as unknown as string,
         // Lambda runtime has no writable $HOME at /home/sbx_user1051.
         // Redirect HOME and npm cache to /tmp (Lambda's writable tmpfs).
         HOME: '/tmp',
@@ -180,6 +190,17 @@ export class MigrationsCustomResource extends Construct {
       },
       bundling,
     });
+
+    // Add explicit CFN-level dependencies so CloudFormation creates resources in order:
+    // 1. Secrets + DB instance → Lambda (DB populates secret via SecretTargetAttachment).
+    // Without this, CloudFormation may resolve {{resolve:secretsmanager:...}} tokens
+    // before the DB exists (which populates the secret's JSON fields), causing
+    // CREATE_FAILED with "Could not find a value associated with JSONKey in SecretString".
+    const cfnFn = migrationsFunction.node.defaultChild as lambda.CfnFunction;
+    cfnFn.addDependency(databaseUrlSecret.node.defaultChild as secretsmanager.CfnSecret);
+    cfnFn.addDependency(adminPasswordSecret.node.defaultChild as secretsmanager.CfnSecret);
+    // The DB instance populates the databaseUrlSecret via SecretTargetAttachment.
+    cfnFn.addDependency(databaseInstance.node.defaultChild as rds.CfnDBInstance);
 
     // CustomResource provider — a singleton SNS-backed provider CDK
     // provisions for us. The `serviceToken` is what wires the provider

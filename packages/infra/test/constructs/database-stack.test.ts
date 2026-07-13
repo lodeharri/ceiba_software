@@ -45,8 +45,9 @@ describe('MigrationsCustomResource (BLOCKER C1 — PR 2a closeout)', () => {
     // CustomResource + Lambda must appear (proves the construct is instantiated, not dead code).
     expect(templateStr).toContain('AWS::CloudFormation::CustomResource');
     expect(templateStr).toContain('AWS::Lambda::Function');
-    // DATABASE_SECRET_ARN env var must be present (BLOCKER C2: resolve at runtime, not plaintext).
-    expect(templateStr).toContain('DATABASE_SECRET_ARN');
+    // DATABASE_URL env var must be present (BLOCKER C2: CDK-resolved Secrets Manager
+    // value passed as a pre-resolved env var; Lambda no longer calls GetSecretValue at runtime).
+    expect(templateStr).toContain('DATABASE_URL');
   });
 });
 

@@ -237,11 +237,18 @@ export class DatabaseStack extends Stack {
     // Instantiate MigrationsCustomResource inside the DatabaseStack.
     // The custom resource runs prisma migrate + seed against the DB once it
     // is available. Downstream stacks depend on it via api.addDependency(database.migrationsNode).
+    //
+    // Pass ISecret objects and the DB instance so CDK can establish dependency edges
+    // between the Lambda and both the secrets and the DB. Without the DB dependency,
+    // CloudFormation resolves {{resolve:secretsmanager:...}} tokens before the DB exists
+    // (which populates the secret's JSON fields), causing CREATE_FAILED with
+    // "Could not find a value associated with JSONKey in SecretString".
     const migrations = new MigrationsCustomResource(this, 'Migrations', {
       stage,
-      databaseUrlSecretArn: this.databaseUrlSecretArn,
-      adminPasswordSecretArn: this.adminPasswordSecretArn,
+      databaseUrlSecret: dbSecret as unknown as secretsmanager.ISecret,
+      adminPasswordSecret: adminPassword as secretsmanager.ISecret,
       vpc,
+      databaseInstance: database,
     });
     // Expose the migrations construct node so other stacks can add it as a dependency.
     this.migrationsNode = migrations;
