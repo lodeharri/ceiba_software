@@ -13,7 +13,6 @@ const products = useProductsStore();
 const inventory = useInventoryStore();
 
 const selectedProductId = ref<string>('');
-const _selectedType = ref<string>(''); // reserved for future type filter
 const page = ref(1);
 
 const allMovements = computed((): Movement[] => {
@@ -28,14 +27,21 @@ const allMovements = computed((): Movement[] => {
   return inventory.getMovementsForProduct(selectedProductId.value);
 });
 
+// In "all products" mode (no selectedProductId), pagination is not applicable —
+// pre-loaded movements are shown without pagination controls.
+const showPagination = computed(() => !!selectedProductId.value);
+
 onMounted(async () => {
   await products.fetchList({ size: 100 });
   // Pre-load movements for all products
   await Promise.all(products.items.map((p) => inventory.fetchMovements(p.id, { size: 50 })));
 });
 
-function handlePage(p: number) {
+async function handlePage(p: number) {
   page.value = p;
+  if (selectedProductId.value) {
+    await inventory.fetchMovements(selectedProductId.value, { page: p });
+  }
 }
 </script>
 
@@ -66,12 +72,18 @@ function handlePage(p: number) {
     </div>
 
     <MovementHistoryTable
+      v-if="showPagination"
       :movements="allMovements"
       :loading="inventory.loading"
       :page="page"
       :size="50"
-      :total="allMovements.length"
+      :total="inventory.currentTotal"
+      :has-more="inventory.currentHasMore"
       @page="handlePage"
     />
+    <div v-else class="text-sm text-text-muted py-8 text-center">
+      {{ $t('inventory.allProducts') }} — {{ allMovements.length }}
+      {{ $t('inventory.movements').toLowerCase() }}
+    </div>
   </div>
 </template>

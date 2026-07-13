@@ -85,8 +85,8 @@ describe('ProductsListPage', () => {
     // Simulate search event
     await filterStrip.vm.$emit('search');
 
-    // fetchList should have been called with the updated filters
-    expect(mockStore.fetchList).toHaveBeenLastCalledWith({ categoryId: 'cat-1' });
+    // fetchList should have been called with the updated filters (page resets to 1 on search)
+    expect(mockStore.fetchList).toHaveBeenLastCalledWith({ categoryId: 'cat-1', page: 1 });
   });
 
   it('category selection updates filters and triggers search', async () => {
@@ -105,7 +105,7 @@ describe('ProductsListPage', () => {
     await filterStrip.vm.$emit('update:modelValue', { categoryId: 'cat-2' });
     await filterStrip.vm.$emit('search');
 
-    expect(mockStore.fetchList).toHaveBeenLastCalledWith({ categoryId: 'cat-2' });
+    expect(mockStore.fetchList).toHaveBeenLastCalledWith({ categoryId: 'cat-2', page: 1 });
   });
 
   it('clearing filters triggers search with empty filters', async () => {
@@ -127,8 +127,8 @@ describe('ProductsListPage', () => {
     await filterStrip.vm.$emit('update:modelValue', {});
     await filterStrip.vm.$emit('search');
 
-    // Should search with empty filters
-    expect(mockStore.fetchList).toHaveBeenLastCalledWith({});
+    // Should search with empty filters + page reset to 1
+    expect(mockStore.fetchList).toHaveBeenLastCalledWith({ page: 1 });
   });
 
   // Bug fix: categories error banner should display when fetch fails

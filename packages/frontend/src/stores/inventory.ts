@@ -13,6 +13,7 @@ export const useInventoryStore = defineStore('inventory', () => {
   const currentPage = ref(1);
   const currentSize = ref(50);
   const currentTotal = ref(0);
+  const currentHasMore = ref(false);
   const loading = ref(false);
   const error = ref<string | null>(null);
 
@@ -25,6 +26,7 @@ export const useInventoryStore = defineStore('inventory', () => {
       currentPage.value = result.page;
       currentSize.value = result.size;
       currentTotal.value = result.total;
+      currentHasMore.value = result.hasMore;
       return result;
     } catch (e) {
       error.value = extractMessage(e);
@@ -68,6 +70,7 @@ export const useInventoryStore = defineStore('inventory', () => {
     currentPage,
     currentSize,
     currentTotal,
+    currentHasMore,
     loading,
     error,
     fetchMovements,

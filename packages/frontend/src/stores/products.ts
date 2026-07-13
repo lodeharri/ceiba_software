@@ -11,6 +11,7 @@ export const useProductsStore = defineStore('products', () => {
   const page = ref(1);
   const size = ref(20);
   const total = ref(0);
+  const hasMore = ref(false);
   const current = ref<Product | null>(null);
   const loading = ref(false);
   const error = ref<string | null>(null);
@@ -24,6 +25,7 @@ export const useProductsStore = defineStore('products', () => {
       total.value = result.total;
       page.value = result.page;
       size.value = result.size;
+      hasMore.value = result.hasMore;
     } catch (e) {
       error.value = extractMessage(e);
       throw e;
@@ -88,6 +90,7 @@ export const useProductsStore = defineStore('products', () => {
     page,
     size,
     total,
+    hasMore,
     current,
     loading,
     error,

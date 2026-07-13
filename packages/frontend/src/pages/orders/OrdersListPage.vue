@@ -2,18 +2,29 @@
 /**
  * OrdersListPage — table with status badge per row, newest first.
  */
-import { onMounted } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useOrdersStore } from '@/stores/orders';
 import StatusBadge from '@/components/molecules/StatusBadge.vue';
 import PageHeader from '@/components/molecules/PageHeader.vue';
 import Button from '@/components/atoms/Button.vue';
 import EmptyState from '@/components/molecules/EmptyState.vue';
+import PaginationControl from '@/components/molecules/PaginationControl.vue';
 
 const orders = useOrdersStore();
 const router = useRouter();
+const statusFilter = ref<string | undefined>(undefined);
 
-onMounted(() => orders.fetchList());
+onMounted(() => orders.fetchList({ status: statusFilter.value }));
+
+async function setFilter(s: string | undefined) {
+  statusFilter.value = s;
+  await orders.fetchList({ status: s, page: 1 });
+}
+
+async function goToPage(p: number) {
+  await orders.fetchList({ status: statusFilter.value, page: p });
+}
 
 function formatDate(iso: string): string {
   return new Intl.DateTimeFormat('es-CO', { dateStyle: 'short' }).format(new Date(iso));
@@ -99,6 +110,18 @@ function formatDate(iso: string): string {
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- Pagination -->
+    <div v-if="orders.total > 0" class="mt-4">
+      <PaginationControl
+        :page="orders.page"
+        :size="orders.size"
+        :total="orders.total"
+        :has-more="orders.hasMore"
+        :disabled="orders.loading"
+        @update:page="goToPage"
+      />
     </div>
   </div>
 </template>

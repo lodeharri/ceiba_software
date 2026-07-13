@@ -7,6 +7,7 @@ import { useAlertsStore } from '@/stores/alerts';
 import AlertCard from '@/components/organisms/AlertCard.vue';
 import EmptyState from '@/components/molecules/EmptyState.vue';
 import PageHeader from '@/components/molecules/PageHeader.vue';
+import PaginationControl from '@/components/molecules/PaginationControl.vue';
 import type { AlertStatus } from '@mercadoexpress/shared/primitives/alert-status.js';
 
 const alerts = useAlertsStore();
@@ -18,7 +19,11 @@ onMounted(() => {
 
 function setFilter(s: AlertStatus | undefined) {
   statusFilter.value = s;
-  alerts.fetchList({ status: s });
+  alerts.fetchList({ status: s, page: 1 });
+}
+
+async function goToPage(p: number) {
+  await alerts.fetchList({ status: statusFilter.value, page: p });
 }
 </script>
 
@@ -71,6 +76,18 @@ function setFilter(s: AlertStatus | undefined) {
 
     <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <AlertCard v-for="alert in alerts.items" :key="alert.id" :alert="alert" />
+    </div>
+
+    <!-- Pagination -->
+    <div v-if="alerts.total > 0" class="mt-4">
+      <PaginationControl
+        :page="alerts.page"
+        :size="alerts.size"
+        :total="alerts.total"
+        :has-more="alerts.hasMore"
+        :disabled="alerts.loading"
+        @update:page="goToPage"
+      />
     </div>
   </div>
 </template>
