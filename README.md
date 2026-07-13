@@ -30,30 +30,50 @@ git clone <repo-url> ceiba_software
 cd ceiba_software
 pnpm install
 
+# 1b. Build workspace packages (one-time, or after pulling changes)
+#    @mercadoexpress/shared must be compiled so Lambda handlers can import from dist/
+pnpm build
+
 # 2. Copy env file (defaults work; edit JWT_SECRET for real dev)
 cp .env.dev.example .env.dev
 
 # 3. Start infrastructure (postgres + localstack + frontend nginx)
 pnpm dev:up
-# verify: docker compose -f docker-compose.dev.yml ps
+# verify: docker compose --env-file .env.dev -f docker-compose.dev.yml ps
 # expect: ceiba-postgres, ceiba-localstack, ceiba-frontend all "Up (healthy)"
 
 # 4. Backend deps + DB setup (first time only)
 pnpm setup
 # Runs: prisma migrate deploy + prisma db seed (admin user + 6 categories + 6 products)
 
-# 5. Start everything (postgres + dev-server + Vite)
-pnpm dev
+# 5. Start dev API + Vite frontend in separate terminals
+pnpm dev:api   # terminal 1 → http://localhost:3001
+pnpm dev:web   # terminal 2 → http://localhost:5173 (or 5174/5175 if 5173 is taken)
+
+> ℹ️  Note: `pnpm dev` (all-in-one) is currently broken due to a `concurrently -k` race
+> with `dev:up` (one-shot). Use `pnpm dev:api` + `pnpm dev:web` in separate terminals.
+> The dockerized frontend nginx occupies `:5173` first, so Vite usually falls back to `:5174`.
+> Always check the output of `pnpm dev:web` to confirm the actual port before opening the browser.
 ```
 
 After startup:
 
 | Service               | URL                                                                                                                                               |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| SPA (Vite dev server) | <http://localhost:5173>                                                                                                                           |
+| SPA (Vite dev server) | <http://localhost:5173> (or `:5174`/`:5175` if `:5173` is taken — see `pnpm dev:web` output)                                                      |
 | API (dev server)      | <http://localhost:3001/api/v1>                                                                                                                    |
 | API health check      | `curl http://localhost:3001/api/v1/health`                                                                                                        |
 | Login                 | `curl -X POST http://localhost:3001/api/v1/auth/login -H 'Content-Type: application/json' -d '{"username":"admin","password":"<your-password>"}'` |
+
+**Default admin credentials (dev only):**
+
+- Username: `admin`
+- Password: see `ADMIN_PASSWORD` in your local `.env.dev` (defaults to a documented dev value; rotate before any real use)
+
+**E2E test credentials:** the Playwright setup file (`e2e/setup.ts`) loads `.env.dev`
+before any test runs. The alert E2E spec authenticates using `process.env.ADMIN_PASSWORD`
+from `.env.dev`. To override, set `ADMIN_PASSWORD` in your shell before running
+`pnpm test:e2e`.
 
 ### Troubleshooting
 
@@ -333,7 +353,7 @@ List products with optional filters.
 
 ```json
 {
-  "data": [
+  "items": [
     {
       "id": "uuid",
       "sku": "BEB-001",
@@ -346,12 +366,10 @@ List products with optional filters.
       "createdAt": "2024-01-01T00:00:00.000Z"
     }
   ],
-  "pagination": {
-    "page": 1,
-    "size": 20,
-    "total": 6,
-    "totalPages": 1
-  }
+  "page": 1,
+  "size": 20,
+  "total": 6,
+  "hasMore": false
 }
 ```
 
@@ -728,7 +746,7 @@ TOKEN=$(curl -s -X POST "http://localhost:3001/api/v1/auth/login" \
 
 # Get a category ID
 CAT_ID=$(curl -s "http://localhost:3001/api/v1/categories" \
-  -H "Authorization: Bearer $TOKEN" | jq -r '.[0].id')
+  -H "Authorization: Bearer $TOKEN" | jq -r '.items[0].id')
 
 # Create product with stock=0, stockMin=10 (will trigger alert)
 PRODUCT_ID=$(curl -s -X POST "http://localhost:3001/api/v1/products" \
@@ -765,7 +783,7 @@ TOKEN=$(curl -s -X POST "http://localhost:3001/api/v1/auth/login" \
 
 # Get ACTIVA alert
 ALERT=$(curl -s "http://localhost:3001/api/v1/alerts?status=ACTIVA" \
-  -H "Authorization: Bearer $TOKEN" | jq -r '.[0]')
+  -H "Authorization: Bearer $TOKEN" | jq -r '.items[0]')
 ALERT_ID=$(echo "$ALERT" | jq -r .id)
 PRODUCT_ID=$(echo "$ALERT" | jq -r .productId)
 
@@ -911,7 +929,7 @@ cd packages/infra && pnpm synth:dev
 - **"Cannot find module '@prisma/client'"**: run `pnpm --filter @mercadoexpress/backend prisma generate`.
 - **pgvector not available**: verify `docker/postgres-init/01-pgvector.sql` mounts correctly in `docker-compose.dev.yml`.
 - **Lambda timeout on first deploy**: RDS creation takes 5–8 min. Check `aws rds describe-db-instances --profile harrison-cicd`.
-- **Login returns 401**: verify `JWT_SECRET` in `.env.dev` matches the seeded admin password hash. Run `pnpm db:seed` to re-seed.
+- **Login returns 401**: re-run `pnpm --filter @mercadoexpress/backend db:seed` to ensure the admin user exists with the `ADMIN_PASSWORD` from your `.env.dev`. JWT secrets (HS256) sign tokens; they do NOT match the bcrypt password hash.
 
 ---
 

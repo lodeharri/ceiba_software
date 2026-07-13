@@ -1,9 +1,8 @@
 # Local Development
 
-One command brings up the entire dev stack: `pnpm dev`. PostgreSQL + LocalStack
-start in Docker; the wrapper-native dev server (`scripts/dev-server.ts`) and
-Vite run on the host with hot reload. This doc covers the happy path, what
-runs where, troubleshooting, and how to reset.
+PostgreSQL + LocalStack start in Docker; the wrapper-native dev server
+(`scripts/dev-server.ts`) and Vite run on the host with hot reload. This doc
+covers the happy path, what runs where, troubleshooting, and how to reset.
 
 ## Prerequisites
 
@@ -19,16 +18,13 @@ runs where, troubleshooting, and how to reset.
 ```bash
 cp .env.dev.example .env.dev   # one-time copy; defaults are functional
 pnpm install                   # workspace deps
-pnpm dev                       # everything
+pnpm build                     # compile @mercadoexpress/shared to dist/ (required for Lambda handlers)
+pnpm dev:api                  # terminal 1 → http://localhost:3001
+pnpm dev:web                  # terminal 2 → http://localhost:5173
 ```
 
-`pnpm dev` runs three jobs concurrently (with labels `db`, `api`, `web`):
-
-1. `pnpm dev:up` — `docker compose up -d` for postgres + LocalStack. Waits for
-   both to report healthy before continuing.
-2. `pnpm dev:api` — the wrapper-native dev server on `:3001`. Watches the
-   `packages/infra/src/handlers/**` tree and restarts on save.
-3. `pnpm dev:web` — Vite on `:5173`. Watches the frontend tree with HMR.
+> ℹ️ Note: `pnpm dev` (all-in-one) is currently broken due to a `concurrently -k` race
+> with `dev:up` (one-shot). Use `pnpm dev:api` + `pnpm dev:web` in separate terminals.
 
 Open <http://localhost:5173> for the SPA. The login screen talks to
 <http://localhost:3001/api/v1> (the dev server), which talks to
@@ -36,14 +32,14 @@ Open <http://localhost:5173> for the SPA. The login screen talks to
 
 ## What runs where
 
-| Command          | Runs on              | Port  | Purpose                                                        |
-| ---------------- | -------------------- | ----- | -------------------------------------------------------------- |
-| `pnpm dev`       | host + docker        | mixed | Orchestrates the three sub-commands below with `concurrently`. |
-| `pnpm dev:up`    | docker               | —     | Starts postgres + LocalStack containers (waits for health).    |
-| `pnpm dev:api`   | host (`tsx --watch`) | 3001  | The HTTP wrapper that invokes the real Lambda handlers.        |
-| `pnpm dev:web`   | host (`vite`)        | 5173  | The Vue 3 SPA with HMR.                                        |
-| `pnpm dev:down`  | docker               | —     | Stops the two containers (keeps volumes).                      |
-| `pnpm dev:reset` | host + docker        | —     | `dev:down -v` plus clears the Vite cache.                      |
+| Command          | Runs on              | Port | Purpose                                                     |
+| ---------------- | -------------------- | ---- | ----------------------------------------------------------- |
+| `pnpm dev`       | —                    | —    | ⚠️ BROKEN — use `pnpm dev:api` + `pnpm dev:web` instead.    |
+| `pnpm dev:up`    | docker               | —    | Starts postgres + LocalStack containers (waits for health). |
+| `pnpm dev:api`   | host (`tsx --watch`) | 3001 | The HTTP wrapper that invokes the real Lambda handlers.     |
+| `pnpm dev:web`   | host (`vite`)        | 5173 | The Vue 3 SPA with HMR.                                     |
+| `pnpm dev:down`  | docker               | —    | Stops the two containers (keeps volumes).                   |
+| `pnpm dev:reset` | host + docker        | —    | `dev:down -v` plus clears the Vite cache.                   |
 
 URLs once everything is up:
 
@@ -148,7 +144,8 @@ rm -rf packages/frontend/node_modules/.vite        # clear Vite cache
 
 ## Next step
 
-Run `pnpm dev`, open <http://localhost:5173>, and the login screen will
-guide you from there. If anything in this doc is wrong or missing, the
-reset recipe is `pnpm dev:reset` — that always gets you back to a clean
-state.
+Start infrastructure first (`pnpm dev:up`), then in separate terminals run
+`pnpm dev:api` and `pnpm dev:web`. Open <http://localhost:5173> and the
+login screen will guide you from there. If anything in this doc is wrong or
+missing, the reset recipe is `pnpm dev:reset` — that always gets you back to
+a clean state.
