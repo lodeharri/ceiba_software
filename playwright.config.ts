@@ -7,6 +7,8 @@ import { defineConfig, devices } from '@playwright/test';
  * Base URL comes from environment or defaults to localhost.
  */
 export default defineConfig({
+  globalSetup: './e2e/setup.ts',
+
   testDir: './e2e',
   fullyParallel: false, // Tests may create shared state
   forbidOnly: !!process.env.CI,
