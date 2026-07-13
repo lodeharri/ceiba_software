@@ -23,8 +23,10 @@ const emit = defineEmits<{
 const categoryId = ref(props.modelValue.categoryId ?? '');
 const supplier = ref(props.modelValue.supplier ?? '');
 const hasActiveAlert = ref(props.modelValue.hasActiveAlert ?? false);
-const minStock = ref(props.modelValue.minStock);
-const maxStock = ref(props.modelValue.maxStock);
+// v-model.number on <input type="number"> yields '' when the field is cleared;
+// explicitly type as number|string|undefined to reflect the HTML input reality.
+const minStock = ref<number | string | undefined>(props.modelValue.minStock);
+const maxStock = ref<number | string | undefined>(props.modelValue.maxStock);
 
 function emitUpdate() {
   emit('update:modelValue', {
@@ -33,9 +35,10 @@ function emitUpdate() {
     hasActiveAlert: hasActiveAlert.value,
     // v-model.number yields '' when the input is cleared; coerce to
     // undefined so the backend ignores the key instead of treating it
-    // as minStock=0 (which would match every product).
-    minStock: minStock.value === '' ? undefined : minStock.value,
-    maxStock: maxStock.value === '' ? undefined : maxStock.value,
+    // as minStock=0 (which would match every product).  Also convert
+    // any intermediate string value to number (the ref is number|string|undefined).
+    minStock: (minStock.value ?? '') === '' ? undefined : Number(minStock.value),
+    maxStock: (maxStock.value ?? '') === '' ? undefined : Number(maxStock.value),
   });
 }
 

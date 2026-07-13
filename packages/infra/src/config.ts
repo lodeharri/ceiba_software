@@ -95,8 +95,10 @@ export const infraConfig: InfraConfig = {
     burst: 100,
     steady: 50,
   },
+  // ADR-9: dev reserves 1 concurrent execution so the §12.4 alarm fires
+  // predictably on every invocation.  prod has no reservation (default).
   reservedConcurrencyByStage: {
-    dev: undefined,
+    dev: 1,
     prod: undefined,
     // localstack: none — predictability is owned by LocalStack's single
     // Lambda container, so reserving concurrency would only stall cold starts.

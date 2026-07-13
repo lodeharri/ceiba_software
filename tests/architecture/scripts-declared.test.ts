@@ -43,13 +43,13 @@ describe('root package.json — PR 1 scripts block (REQ-NDS-1, design §5)', () 
 
   it('dev:reset clears the dev DB volumes AND the Vite cache', () => {
     expect(ROOT_PACKAGE_JSON.scripts?.['dev:reset']).toBe(
-      'docker compose -f docker-compose.dev.yml down -v && rm -rf packages/frontend/node_modules/.vite',
+      'docker compose --env-file .env.dev -f docker-compose.dev.yml down -v',
     );
   });
 
   it('dev starts all three runners through concurrently with the prefixed colours', () => {
     expect(ROOT_PACKAGE_JSON.scripts?.['dev']).toMatch(
-      /^concurrently -k -n db,api,web -c blue,green,magenta /,
+      /pnpm env:bootstrap && concurrently -k -n db,api,web -c blue,green,magenta /,
     );
   });
 });

@@ -13,10 +13,48 @@
  * bcrypt cost 10 (D6). Exits non-zero if a required env var is missing
  * so the CustomResource marks the stack CREATE_FAILED rather than
  * silently seeding a partial dataset (auth/spec.md "Missing env vars").
+ *
+ * ## Dotenv bootstrap
+ *
+ * This file loads `.env.dev` (or `.env.dev.example` / `.env` as fallbacks)
+ * BEFORE any import that reads `process.env` so that `ADMIN_USERNAME`,
+ * `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and `BCRYPT_COST` are available before
+ * the required-var guard runs and before `PrismaClient` is instantiated.
+ * The pattern mirrors `scripts/dev-server.ts` (PR 4 defect-C closeout).
+ *
+ * Uses `bcryptjs` (pure JS) — the architectural decision matches the runtime
+ * `BcryptPasswordHasher` in `src/auth/infrastructure/`.  All `$2a/$2b/$2y$`
+ * prefix variants are mutually verifiable via `bcryptjs.compare()`.
  */
 
+import { existsSync } from 'node:fs';
+import { config as loadDotenv } from 'dotenv';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// seed.ts lives in packages/backend/prisma/.  Walk up to the workspace root
+// so the same .env.dev used by docker-compose.dev.yml and dev-server.ts is
+// found regardless of the CWD at invocation time.
+// Use process.argv[1] as the source of truth (tsx sets this even when
+// import.meta.url is undefined in -e / REPL mode); fall back to
+// import.meta.url when available.
+const srcPath = import.meta.url
+  ? fileURLToPath(import.meta.url)
+  : (process.argv[1] ?? import.meta.url);
+const seedDir = dirname(srcPath); // packages/backend/prisma
+const backendDir = dirname(seedDir); // packages/backend
+const packagesDir = dirname(backendDir); // packages
+const workspaceRoot = dirname(packagesDir); // workspace root
+if (existsSync(`${workspaceRoot}/.env.dev`)) {
+  loadDotenv({ path: `${workspaceRoot}/.env.dev` });
+} else if (existsSync(`${workspaceRoot}/.env.dev.example`)) {
+  loadDotenv({ path: `${workspaceRoot}/.env.dev.example` });
+} else {
+  loadDotenv();
+}
+
 import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 const BCRYPT_COST = Number(process.env['BCRYPT_COST'] ?? 10);
 
