@@ -16,6 +16,11 @@ const mockGetCategoriesBootstrap = vi.fn(() => ({
   listCategories: { execute: mockExecute } as unknown as ListCategoriesUseCase,
 }));
 
+// Mock JWT verification for handler tests
+vi.mock('../../../shared/jwt-middleware.js', () => ({
+  verifyJwt: vi.fn().mockResolvedValue({ sub: '33333333-3333-3333-3333-333333333333' }),
+}));
+
 vi.mock('../../bootstrap.js', () => ({
   getCategoriesBootstrap: () => mockGetCategoriesBootstrap(),
 }));
@@ -34,7 +39,9 @@ function makeEvent(): APIGatewayProxyEventV2 {
     routeKey: 'GET /api/v1/categories',
     rawPath: '/api/v1/categories',
     rawQueryString: '',
-    headers: {},
+    headers: {
+      authorization: `Bearer header.eyJzdWIiOiAiMzMzMzMzMzMtMzMzMy0zMzMzLTMzMzMtMzMzMzMzMzMzMzMzIiwgImV4cCI6IDk5OTk5OTk5OTl9.signature`,
+    },
     requestContext: {
       http: {
         method: 'GET',

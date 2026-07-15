@@ -26,6 +26,10 @@ function makeEvent(overrides: Partial<APIGatewayProxyEventV2> = {}): APIGatewayP
   } as unknown as APIGatewayProxyEventV2;
 }
 
+vi.mock('../../../shared/jwt-middleware.js', () => ({
+  verifyJwt: vi.fn().mockResolvedValue({ sub: U }),
+}));
+
 vi.mock('./bootstrap.js', () => ({
   getOrdersBootstrap: vi.fn(() => ({
     rejectOrderUseCase: {
@@ -60,7 +64,12 @@ describe('POST /api/v1/orders/{id}/reject handler', () => {
       ) => Promise<{ statusCode: number; body?: string }>
     )(makeEvent(), CTX);
     expect(result.statusCode).toBe(200);
-    const body = JSON.parse(result.body!);
+    let body: Record<string, unknown> = {};
+    try {
+      body = JSON.parse(result.body!) as Record<string, unknown>;
+    } catch {
+      /* test body is valid JSON */
+    }
     expect(body.productName).toBe('Cerveza');
     expect(body.productSku).toBe('SKU-001');
     expect(body.status).toBe('RECHAZADA');

@@ -2,17 +2,19 @@
  * Inventory BC — `GET /products/{id}/movements` handler (PR 2b).
  *
  * Pipeline:
- *   1. Parse query parameters (`page`, `size`) with sensible defaults.
- *   2. Validate bounds.
- *   3. Extract `productId` from rawPath.
- *   4. Invoke `StockMovementRepository.listByProduct(args)` inside the
- *      bootstrap.
- *   5. Return the page envelope with 200.
- *   6. Map errors via `toErrorResponse`.
+ *   1. Verify JWT.
+ *   2. Parse query parameters (`page`, `size`) with sensible defaults.
+ *   3. Validate bounds.
+ *   4. Extract `productId` from rawPath.
+ *   5. Invoke `StockMovementRepository.listByProduct(args)` inside the bootstrap.
+ *   6. Return the page envelope with 200.
+ *   7. Map errors via `toErrorResponse`.
  */
 
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { ErrorCode } from '@mercadoexpress/shared';
+import { verifyJwt } from '../../../shared/jwt-middleware.js';
+import { UnauthorizedError } from '../../../shared/errors/typed-errors.js';
 import { getInventoryBootstrap } from '../../bootstrap.js';
 import { withRequestContext, type RequestContext } from '../../../shared/request-context.js';
 import { BaseDomainError } from '../../../shared/errors/base-domain-error.js';
@@ -25,6 +27,17 @@ class ValidationError extends BaseDomainError {
   constructor(message: string, details: Record<string, unknown>) {
     super({ code: ErrorCode.VALIDATION_ERROR, httpStatus: 400, message, details });
   }
+}
+
+// ── JWT helpers ──
+
+function extractBearer(event: APIGatewayProxyEventV2): string {
+  const raw = (event.headers?.['authorization'] ?? event.headers?.['Authorization']) as
+    string | undefined;
+  if (!raw || !raw.startsWith('Bearer ')) {
+    throw new UnauthorizedError(ErrorCode.INVALID_TOKEN, 'Missing Bearer token');
+  }
+  return raw.slice('Bearer '.length).trim();
 }
 
 // ── Query param helpers ──
@@ -65,6 +78,10 @@ function parsePageParams(rawQuery: string): PageParams {
 export const handler = withRequestContext(
   async (event: APIGatewayProxyEventV2, ctx: RequestContext): Promise<APIGatewayProxyResultV2> => {
     try {
+      // Verify JWT
+      const token = extractBearer(event);
+      await verifyJwt(token);
+
       const productId = extractProductId(event.rawPath);
       if (!productId) {
         throw new ValidationError('Missing or malformed product ID in path.', {

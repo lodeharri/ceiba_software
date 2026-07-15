@@ -19,7 +19,9 @@ function fakeJwt(sub: string = VALID_SUB): string {
 function makeEvent(overrides: Partial<APIGatewayProxyEventV2> = {}): APIGatewayProxyEventV2 {
   return {
     requestContext: { http: { method: 'POST', path: '/api/v1/orders', sourceIp: '127.0.0.1' } },
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${fakeJwt()}` },
+    headers: {
+      authorization: `Bearer header.eyJzdWIiOiAiMzMzMzMzMzMtMzMzMy0zMzMzLTMzMzMtMzMzMzMzMzMzMzMzIiwgImV4cCI6IDk5OTk5OTk5OTl9.signature`,
+    },
     body: JSON.stringify({ productId: VALID_PRODUCT, quantity: 60 }),
     rawPath: '/api/v1/orders',
     rawQueryString: '',
@@ -29,6 +31,11 @@ function makeEvent(overrides: Partial<APIGatewayProxyEventV2> = {}): APIGatewayP
 }
 
 // Module-level mock must be before the dynamic import
+// Mock JWT verification for handler tests
+vi.mock('../../../shared/jwt-middleware.js', () => ({
+  verifyJwt: vi.fn().mockResolvedValue({ sub: '33333333-3333-3333-3333-333333333333' }),
+}));
+
 vi.mock('./bootstrap.js', () => {
   const mockExecute = vi.fn();
   return {

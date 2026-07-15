@@ -1,13 +1,13 @@
 /**
- * ApiStack (PR 1 + PR 2 + PR 2a, tasks.md §2 PR 1 + §2 PR 2 + PR 2a).
+ * ApiStack (PR 2, task 3 — consolidate 5 Lambdas into 1).
  *
  * Provisions:
  *   - HTTP API v2 with `corsPreflight` block (RISK-002) wired to the
  *     CloudFront distribution domain captured at synth time.
- *   - Per-BC NodejsFunctions with JWT middleware on every protected
- *     route (`/api/v1/products/*`, `/api/v1/categories/*`).
- *   - Auth Lambda on `/api/v1/auth/login` (NO JWT middleware).
- *   - 5 CloudWatch Log Groups with 7-day retention (ADR-7).
+ *   - SINGLE consolidated NodejsFunction (`MercadoExpress-{stage}-api`)
+ *     that dispatches all HTTP requests to the appropriate bounded-context
+ *     handler via an internal route map (see `packages/backend/src/lambda/handler.ts`).
+ *   - 1 CloudWatch Log Group with 7-day retention (ADR-7).
  *   - Reserved concurrency per stage (1 in dev, default in prod per ADR-9).
  *   - Default throttle 100 / 50 from config.ts.
  *   - JWT secret + previous-secret SSM SecureStrings (C1 closeout).
@@ -24,11 +24,10 @@
  *     in its env), or `{ kind: 'secret-arn', secretArn }` for AWS stages
  *     (the Lambda calls GetSecretValue at cold start).
  *
- * Categories BC handler is merged into the products Lambda (PR 2a
- * decision per design.md §2.1) — both share the same Prisma client,
- * read the same DATABASE_SECRET_ARN, and are unit-tested independently
- * by their own bootstrap (the routes are separate HTTP routes; the
- * Lambda does not need to know about BC boundaries).
+ * PR 2 consolidation: all 5 prior Lambdas (auth, products, inventory,
+ * alerts, orders) are replaced by a single `ConsolidatedApi` Lambda whose
+ * entry is `packages/backend/src/lambda/handler.ts`. Route dispatch happens
+ * inside the Lambda, not at the API Gateway level.
  */
 
 import { Stack, type StackProps, CfnOutput, Duration, Fn, RemovalPolicy } from 'aws-cdk-lib';
@@ -45,12 +44,23 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type Stage, infraConfig } from '../config.js';
 
-function backendHandlerPath(handlerFile: string): string {
+function consolidatedHandlerPath(): string {
   const here = fileURLToPath(import.meta.url);
   // Compiled file lives at `dist/src/stacks/ApiStack.js`; the source tree
-  // is `packages/backend/src/<bc>/interface/handlers/<name>.ts`.
-  return path.resolve(path.dirname(here), '..', '..', '..', '..', 'backend', 'src', handlerFile);
+  // is `packages/backend/src/lambda/handler.ts`.
+  return path.resolve(
+    path.dirname(here),
+    '..',
+    '..',
+    '..',
+    '..',
+    'backend',
+    'src',
+    'lambda',
+    'handler.js',
+  );
 }
+
 export interface ApiStackProps extends StackProps {
   stage: Stage;
   /**
@@ -61,7 +71,7 @@ export interface ApiStackProps extends StackProps {
    */
   corsAllowOrigin?: string | undefined;
   /**
-   * PR 2: how the BC Lambdas receive `DATABASE_URL`. `plain-env` carries
+   * PR 2: how the Lambda receives `DATABASE_URL`. `plain-env` carries
    * the literal URL in the Lambda env (localstack); `secret-arn` carries
    * the Secrets Manager ARN so the Lambda resolves the URL at cold start
    * via GetSecretValue (dev/prod). Defaults to a `secret-arn` source
@@ -69,7 +79,7 @@ export interface ApiStackProps extends StackProps {
    */
   databaseSource?: DatabaseSource | undefined;
   /**
-   * PR 2: how the BC Lambdas receive `JWT_SECRET` / `JWT_SECRET_PREVIOUS`.
+   * PR 2: how the Lambda receives `JWT_SECRET` / `JWT_SECRET_PREVIOUS`.
    * `plain-env` carries the literals (localstack); `ssm-parameter` carries
    * SSM SecureString parameter names (deprecated — jwtSecretArn wins when both are set).
    */
@@ -99,81 +109,55 @@ export type JwtSource =
   | { kind: 'plain-env'; secret: string; previousSecret: string }
   | { kind: 'ssm-parameter'; parameterName: string; previousParameterName: string };
 
+/**
+ * All routes served by the single consolidated Lambda.
+ * This drives BOTH the `httpApi.addRoutes()` call and the `LAMBDAS`
+ * export (used by scripts/dev-server.ts for local dev).
+ */
+export interface RouteSpec {
+  path: string;
+  methods: apigwv2.HttpMethod[];
+}
+
 export interface LambdaSpec {
   id: string;
   functionName: string;
-  /** The handler entry file in `packages/backend/src/<sourceBc>/...` */
+  /** The handler entry file in `packages/backend/src/lambda/handler.js` */
   entry: string;
-  /** Whether the Lambda needs JWT middleware on every route. */
-  requiresJwt: boolean;
-  /** Route map: path → method[] for this Lambda. */
-  routes: Array<{ path: string; methods: apigwv2.HttpMethod[] }>;
+  routes: RouteSpec[];
 }
 
-/**
- * PR 2a: only `auth` and `products`+`categories` are wired with real
- * handlers; `inventory`, `alerts`, `orders` still resolve to the
- * placeholder and land in PR 2b/2c.
- */
 export const LAMBDAS: readonly LambdaSpec[] = [
   {
-    id: 'AuthLambda',
-    functionName: 'auth-lambda',
-    entry: backendHandlerPath('auth/interface/handlers/bootstrap.ts'),
-    requiresJwt: false,
-    routes: [{ path: '/api/v1/auth/login', methods: [apigwv2.HttpMethod.POST] }],
-  },
-  {
-    id: 'ProductsLambda',
-    functionName: 'products-lambda',
-    // The Lambda entry is the products BC's `bootstrap.ts`, which
-    // re-exports the shared dispatcher (design.md §2.1: categories
-    // co-hosted with products). The dispatcher wires JWT verification
-    // internally so API Gateway needs no authorizer on these routes.
-    entry: backendHandlerPath('products/interface/handlers/bootstrap.ts'),
-    requiresJwt: true,
+    id: 'ConsolidatedApi',
+    functionName: 'consolidated-api',
+    entry: consolidatedHandlerPath(),
     routes: [
+      // Auth
+      { path: '/api/v1/auth/login', methods: [apigwv2.HttpMethod.POST] },
+      // Products + Categories
       { path: '/api/v1/products', methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.GET] },
       {
         path: '/api/v1/products/{id}',
         methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.PATCH],
       },
       { path: '/api/v1/categories', methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST] },
-    ],
-  },
-  {
-    id: 'InventoryLambda',
-    functionName: 'inventory-lambda',
-    entry: backendHandlerPath('inventory/interface/handlers/bootstrap.ts'),
-    requiresJwt: true,
-    routes: [
+      // Inventory
       {
         path: '/api/v1/products/{id}/movements',
         methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.GET],
       },
-    ],
-  },
-  {
-    id: 'AlertsLambda',
-    functionName: 'alerts-lambda',
-    entry: backendHandlerPath('alerts/interface/handlers/bootstrap.ts'),
-    requiresJwt: true,
-    routes: [
+      // Alerts
       { path: '/api/v1/alerts', methods: [apigwv2.HttpMethod.GET] },
       { path: '/api/v1/alerts/{id}', methods: [apigwv2.HttpMethod.GET] },
-    ],
-  },
-  {
-    id: 'OrdersLambda',
-    functionName: 'orders-lambda',
-    entry: backendHandlerPath('shared/dispatchers/orders-dispatcher.ts'),
-    requiresJwt: true,
-    routes: [
+      // Orders
       { path: '/api/v1/orders', methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.GET] },
       { path: '/api/v1/orders/{id}', methods: [apigwv2.HttpMethod.GET] },
       { path: '/api/v1/orders/{id}/approve', methods: [apigwv2.HttpMethod.POST] },
       { path: '/api/v1/orders/{id}/reject', methods: [apigwv2.HttpMethod.POST] },
       { path: '/api/v1/orders/{id}/receive', methods: [apigwv2.HttpMethod.POST] },
+      // Health (handled inline by the consolidated Lambda)
+      { path: '/api/v1/health', methods: [apigwv2.HttpMethod.GET] },
     ],
   },
 ] as const;
@@ -183,7 +167,7 @@ export class ApiStack extends Stack {
   public readonly lambdaFns: Record<string, lambda.Function>;
 
   public constructor(scope: Construct, id: string, props: ApiStackProps) {
-    super(scope, id, props);
+    super(scope, id);
 
     const {
       stage,
@@ -246,16 +230,11 @@ export class ApiStack extends Stack {
       databaseSource.kind === 'plain-env'
         ? databaseSource.databaseUrl
         : (() => {
-            // CDK's Fn.join signature is typed `string[]` but accepts IResolvable tokens
-            // at runtime. Suppress lint for the local array cast.
-
             const dbSecret = secretsmanager.Secret.fromSecretCompleteArn(
               this,
               'DbSecretRef',
               databaseSource.secretArn,
             );
-            // CDK's Fn.join signature is typed `string[]` but accepts IResolvable tokens
-            // at runtime. Suppress lint for the local array cast.
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const urlParts: any[] = [
               'postgresql://',
@@ -289,71 +268,67 @@ export class ApiStack extends Stack {
 
     const reservedConcurrency = infraConfig.reservedConcurrencyByStage[stage];
 
-    const logGroups: logs.LogGroup[] = LAMBDAS.map((l) => {
-      const logGroup = new logs.LogGroup(this, `${l.id}LogGroup`, {
-        logGroupName: `/aws/lambda/MercadoExpress-${stage}-${l.functionName}`,
-        retention: infraConfig.logRetentionDays as logs.RetentionDays,
-        removalPolicy: stage === 'prod' ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
-      });
-      return logGroup;
+    // ── Single consolidated Lambda ────────────────────────────────────────────
+
+    const consolidatedLogGroup = new logs.LogGroup(this, 'ConsolidatedApiLogGroup', {
+      logGroupName: `/aws/lambda/MercadoExpress-${stage}-consolidated-api`,
+      retention: infraConfig.logRetentionDays as logs.RetentionDays,
+      removalPolicy: stage === 'prod' ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
     });
 
     this.lambdaFns = {};
-    LAMBDAS.forEach((l, i) => {
-      const logGroup = logGroups[i];
-      if (!logGroup) return;
-      const fn = new nodejs.NodejsFunction(this, l.id, {
-        functionName: `MercadoExpress-${stage}-${l.functionName}`,
-        runtime: lambda.Runtime.NODEJS_20_X,
-        entry: l.entry,
-        handler: 'handler',
-        logGroup,
-        memorySize: 512,
-        timeout: Duration.seconds(10),
-        // `bcryptjs` is pure JS — no native bindings, no external bundling needed.
-        // Only `aws-sdk` remains external (injected at Lambda runtime).
-        bundling: {
-          externalModules: ['aws-sdk'],
-        },
-        ...(props.vpc
-          ? {
-              vpc: props.vpc,
-              vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
-            }
-          : {}),
-        environment: {
-          STAGE: stage,
-          DATABASE_URL: databaseUrlValue,
-          JWT_SECRET: jwtSecretRef?.secretValue.unsafeUnwrap() ?? 'placeholder-replaced-by-ops',
-          JWT_SECRET_PREVIOUS:
-            jwtSecretPreviousRef?.secretValue.unsafeUnwrap() ?? 'placeholder-empty-on-first-deploy',
-          JWT_OVERLAP_SECONDS: '3600',
-          TRUSTED_PROXY_DEPTH: '0',
-          LOG_LEVEL: 'info',
-          BCRYPT_COST: '10',
-        },
-        ...(reservedConcurrency !== undefined
-          ? { reservedConcurrentExecutions: reservedConcurrency }
-          : {}),
-      });
-      this.lambdaFns[l.id] = fn;
+    const consolidatedFn = new nodejs.NodejsFunction(this, 'ConsolidatedApi', {
+      functionName: `MercadoExpress-${stage}-api`,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: consolidatedHandlerPath(),
+      handler: 'handler',
+      logGroup: consolidatedLogGroup,
+      memorySize: 512,
+      timeout: Duration.seconds(10),
+      bundling: {
+        externalModules: ['aws-sdk'],
+      },
+      ...(props.vpc
+        ? {
+            vpc: props.vpc,
+            vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+          }
+        : {}),
+      environment: {
+        STAGE: stage,
+        DATABASE_URL: databaseUrlValue,
+        JWT_SECRET: jwtSecretRef?.secretValue.unsafeUnwrap() ?? 'placeholder-replaced-by-ops',
+        JWT_SECRET_PREVIOUS:
+          jwtSecretPreviousRef?.secretValue.unsafeUnwrap() ?? 'placeholder-empty-on-first-deploy',
+        JWT_OVERLAP_SECONDS: '3600',
+        TRUSTED_PROXY_DEPTH: '0',
+        LOG_LEVEL: 'info',
+        BCRYPT_COST: '10',
+      },
+      ...(reservedConcurrency !== undefined
+        ? { reservedConcurrentExecutions: reservedConcurrency }
+        : {}),
     });
+    this.lambdaFns['ConsolidatedApi'] = consolidatedFn;
 
-    // Routes. Each BC lambda routes its declared paths; no JWT middleware
-    // is applied at the API Gateway level — the JWT verification happens
-    // INSIDE each Lambda (per design.md §2.1, "No Lambda authorizer").
-    // Auth Lambda does NOT require a Bearer token (it issues them).
+    // ── Routes — all paths go to the single Lambda ─────────────────────────────
+
+    const consolidatedIntegration = new HttpLambdaIntegration(
+      'ConsolidatedApiIntegration',
+      consolidatedFn,
+    );
+
     for (const l of LAMBDAS) {
-      const fn = this.lambdaFns[l.id];
-      if (!fn) continue;
-      const integration = new HttpLambdaIntegration(`${l.id}-Integration`, fn);
-      for (const r of l.routes) {
+      void l; // single Lambda; loop kept for future extensibility
+      for (const route of LAMBDAS[0]!.routes) {
         this.httpApi.addRoutes({
-          path: r.path,
-          methods: r.methods,
-          integration,
+          path: route.path,
+          methods: route.methods,
+          integration: consolidatedIntegration,
         });
       }
+      // Only add routes once (single Lambda)
+      break;
     }
 
     new CfnOutput(this, 'HttpApiUrl', {

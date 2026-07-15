@@ -8,13 +8,20 @@ import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 function makeEvent(overrides: Partial<APIGatewayProxyEventV2> = {}): APIGatewayProxyEventV2 {
   return {
     requestContext: { http: { method: 'GET', path: '/api/v1/orders', sourceIp: '127.0.0.1' } },
-    headers: {},
+    headers: {
+      authorization: `Bearer header.eyJzdWIiOiAiMzMzMzMzMzMtMzMzMy0zMzMzLTMzMzMtMzMzMzMzMzMzMzMzIiwgImV4cCI6IDk5OTk5OTk5OTl9.signature`,
+    },
     rawPath: '/api/v1/orders',
     rawQueryString: '',
     routeKey: 'GET /api/v1/orders',
     ...overrides,
   } as unknown as APIGatewayProxyEventV2;
 }
+
+// Mock JWT verification for handler tests
+vi.mock('../../../shared/jwt-middleware.js', () => ({
+  verifyJwt: vi.fn().mockResolvedValue({ sub: '33333333-3333-3333-3333-333333333333' }),
+}));
 
 vi.mock('./bootstrap.js', () => ({
   getOrdersBootstrap: vi.fn(() => ({

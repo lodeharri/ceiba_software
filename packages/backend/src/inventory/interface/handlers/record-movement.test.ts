@@ -5,6 +5,11 @@ import { StockWouldGoNegativeError } from '../../domain/errors/stock-would-go-ne
 import { ProductNotFoundError } from '../../domain/errors/product-not-found.js';
 
 // Module-level mocks must be defined before importing the handler
+// Mock JWT verification for handler tests
+vi.mock('../../../shared/jwt-middleware.js', () => ({
+  verifyJwt: vi.fn().mockResolvedValue({ sub: '33333333-3333-3333-3333-333333333333' }),
+}));
+
 vi.mock('../../bootstrap.js', () => {
   const mockRecord = vi.fn();
   return {

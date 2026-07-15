@@ -3,6 +3,11 @@ import type { APIGatewayProxyEventV2 } from 'aws-lambda';
 import { ErrorCode } from '@mercadoexpress/shared';
 
 // Module-level mocks must be defined before importing the handler
+// Mock JWT verification for handler tests
+vi.mock('../../../shared/jwt-middleware.js', () => ({
+  verifyJwt: vi.fn().mockResolvedValue({ sub: '33333333-3333-3333-3333-333333333333' }),
+}));
+
 vi.mock('../../bootstrap.js', () => {
   const mockListByProduct = vi.fn();
   return {
@@ -29,7 +34,10 @@ function makeEvent(overrides: Partial<APIGatewayProxyEventV2> = {}): APIGatewayP
         userAgent: 'test',
       },
     },
-    headers: {},
+    headers: {
+      authorization:
+        'Bearer header.eyJzdWIiOiAiMzMzMzMzMzMtMzMzMy0zMzMzLTMzMzMtMzMzMzMzMzMzMzMzIiwgImV4cCI6IDk5OTk5OTk5OTl9.signature',
+    },
     body: null,
     rawPath: '/api/v1/products/11111111-1111-4111-8111-111111111111/movements',
     rawQueryString: '',

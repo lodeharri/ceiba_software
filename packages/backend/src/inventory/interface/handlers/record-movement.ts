@@ -2,16 +2,18 @@
  * Inventory BC — `POST /products/{id}/movements` handler (PR 2b).
  *
  * Pipeline:
- *   1. Extract `productId` from rawPath.
- *   2. Parse + validate the JSON body (type, quantity, reason).
- *   3. Decode userId from JWT if present (dispatcher verifies upstream).
- *   4. Invoke `StockMutationService.record(input)` inside the bootstrap.
- *   5. Return `{ movementId, stockAfter }` with 201 on success.
- *   6. Map domain errors via `toErrorResponse`.
+ *   1. Extract + verify JWT.
+ *   2. Extract `productId` from rawPath.
+ *   3. Parse + validate the JSON body (type, quantity, reason).
+ *   4. Extract userId from JWT payload.
+ *   5. Invoke `StockMutationService.record(input)` inside the bootstrap.
+ *   6. Return `{ movementId, stockAfter }` with 201 on success.
+ *   7. Map domain errors via `toErrorResponse`.
  */
 
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { ErrorCode } from '@mercadoexpress/shared';
+import { verifyJwt } from '../../../shared/jwt-middleware.js';
 import { getInventoryBootstrap } from '../../bootstrap.js';
 import { withRequestContext, type RequestContext } from '../../../shared/request-context.js';
 import { BaseDomainError } from '../../../shared/errors/base-domain-error.js';
@@ -70,11 +72,20 @@ function parseBody(raw: string | undefined): RecordMovementBody {
   return { type, quantity, reason };
 }
 
-// ── User ID extraction ──
+// ── JWT helpers ──
+
+function extractBearer(event: APIGatewayProxyEventV2): string {
+  const raw = (event.headers?.['authorization'] ?? event.headers?.['Authorization']) as
+    string | undefined;
+  if (!raw || !raw.startsWith('Bearer ')) {
+    throw new UnauthorizedError('Missing Bearer token.');
+  }
+  return raw.slice('Bearer '.length).trim();
+}
 
 /**
- * Extracts the `sub` claim from a Bearer JWT. Throws 401 Unauthorized
- * if no token is present or the claim is missing.
+ * Extracts the `sub` claim from a previously-verified JWT payload.
+ * Throws 401 Unauthorized if the claim is missing.
  */
 function getUserId(event: APIGatewayProxyEventV2): string {
   const raw = (event.headers?.['authorization'] ?? event.headers?.['Authorization']) as
@@ -86,7 +97,7 @@ function getUserId(event: APIGatewayProxyEventV2): string {
     const payload = JSON.parse(
       Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8'),
     );
-    if (typeof payload.sub === 'string' && payload.sub.length > 0) return payload.sub;
+    if (typeof payload.sub === 'string' && payload.sub.length > 0) return payload.sub as string;
     throw new UnauthorizedError('Token missing subject claim.');
   } catch (e) {
     if (e instanceof BaseDomainError) throw e;
@@ -99,6 +110,10 @@ function getUserId(event: APIGatewayProxyEventV2): string {
 export const handler = withRequestContext(
   async (event: APIGatewayProxyEventV2, ctx: RequestContext): Promise<APIGatewayProxyResultV2> => {
     try {
+      // Verify JWT signature before proceeding
+      const token = extractBearer(event);
+      await verifyJwt(token);
+
       const productId = extractProductId(event.rawPath);
       if (!productId) {
         throw new ValidationError('Missing or malformed product ID in path.', {

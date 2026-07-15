@@ -109,7 +109,7 @@ export type DevHandler = (event: DevEvent, context: DevContext) => Promise<DevRe
 /**
  * Flat spec the dev server consumes: one entry per (method, path) pair.
  * The real `LambdaSpec` from `@mercadoexpress/infra` is CDK-shaped
- * (`{ id, functionName, entry, requiresJwt, routes: [{ path, methods }] }`);
+ * (`{ id, functionName, entry, routes: [{ path, methods }] }`);
  * `boot()` flattens it into this shape after dynamically importing each
  * `entry`.
  */
@@ -179,6 +179,7 @@ export function corsPreflightHeaders(): Record<string, string> {
   // (mirror of APIGW v2's default SPA preflight policy for a localhost-only
   // dev environment). Production CORS lives in the API Gateway HTTP API v2
   // CORS policy (out of scope for this file).
+
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': ALLOW_METHODS,

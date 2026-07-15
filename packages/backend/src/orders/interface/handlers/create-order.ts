@@ -4,6 +4,7 @@
 
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { ErrorCode } from '@mercadoexpress/shared';
+import { verifyJwt } from '../../../shared/jwt-middleware.js';
 import { UnauthorizedError } from '../../../shared/errors/typed-errors.js';
 import { getOrdersBootstrap } from './bootstrap.js';
 import { withRequestContext, type RequestContext } from '../../../shared/request-context.js';
@@ -31,7 +32,7 @@ function getUserId(event: APIGatewayProxyEventV2): string {
     const payload = JSON.parse(
       Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8'),
     );
-    if (typeof payload.sub === 'string' && payload.sub.length > 0) return payload.sub;
+    if (typeof payload.sub === 'string' && payload.sub.length > 0) return payload.sub as string;
     throw new UnauthorizedError(ErrorCode.INVALID_TOKEN, 'Token missing subject claim.');
   } catch (e) {
     if (e instanceof UnauthorizedError) throw e;
@@ -42,6 +43,14 @@ function getUserId(event: APIGatewayProxyEventV2): string {
 export const handler = withRequestContext(
   async (event: APIGatewayProxyEventV2, ctx: RequestContext): Promise<APIGatewayProxyResultV2> => {
     try {
+      // Verify JWT before any operation
+      const rawAuth = (event.headers?.['authorization'] ?? event.headers?.['Authorization']) as
+        string | undefined;
+      if (!rawAuth || !rawAuth.startsWith('Bearer ')) {
+        throw new UnauthorizedError(ErrorCode.INVALID_TOKEN, 'Missing Bearer token');
+      }
+      await verifyJwt(rawAuth.slice('Bearer '.length).trim());
+
       let body: unknown;
       try {
         body = JSON.parse(event.body ?? '{}');

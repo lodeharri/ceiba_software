@@ -6,6 +6,11 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
+// Mock JWT verification for handler tests
+vi.mock('../../../shared/jwt-middleware.js', () => ({
+  verifyJwt: vi.fn().mockResolvedValue({ sub: '33333333-3333-3333-3333-333333333333' }),
+}));
+
 vi.mock('./bootstrap.js', () => {
   const executeMock = vi.fn().mockResolvedValue({
     order: {
