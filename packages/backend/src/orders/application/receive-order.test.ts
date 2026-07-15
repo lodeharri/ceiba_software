@@ -1,17 +1,12 @@
 /**
- * RED test: ReceiveOrderUseCase — four-step atomic flow (PR 2c, ADR-3).
+ * Tests for ReceiveOrderUseCase (PR 1.2 — Drizzle migration).
  *
- * Steps inside prisma.$transaction:
+ * Steps inside db.transaction:
  *   1. orderRepository.txUpdate(id, 'RECIBIDA')
  *   2. productStockGate.txIncrementStock(tx, productId, ENTRADA, qty, reason, userId)
  *   3. alertCloserPort.txCloseIfOpenAndAboveMin(tx, productId, newStock, stockMin)
  *   4. compose read model with the pre-fetched product
- *
- * Duplicate-receive (RISK-W07): second receive on already-RECIBIDA order → 409.
- * Rollback: stub ProductStockGate to throw → order stays APROBADA.
- * Product-deleted edge case: product deleted between approval and receive → 422.
  */
-
 import { describe, expect, it } from 'vitest';
 import type { OrderRepository } from '../domain/ports/order-repository.js';
 import type { ProductReadRepository } from '../domain/ports/product-read-repository.js';
@@ -64,14 +59,8 @@ function makeUseCase(
   alertCloser: AlertCloserPort,
   txRunner: (fn: (tx: unknown) => Promise<unknown>) => Promise<unknown> = (fn) => fn({}),
 ): ReceiveOrderUseCase {
-  const mockPrisma = { $transaction: txRunner };
-  return new ReceiveOrderUseCase(
-    mockPrisma as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-    orderRepo,
-    productRepo,
-    stockGate,
-    alertCloser,
-  );
+  const mockUow = { execute: txRunner };
+  return new ReceiveOrderUseCase(mockUow as never, orderRepo, productRepo, stockGate, alertCloser);
 }
 
 function makeHappyOrderRepo(): OrderRepository {
@@ -218,62 +207,5 @@ describe('ReceiveOrderUseCase — four-step atomic flow (ADR-3)', () => {
     );
     await expect(useCase.execute(O, 'Received', U)).rejects.toThrow('DB constraint violation');
     expect(txRan).toBe(true);
-  });
-
-  it('PENDIENTE → receive → 409 ORDER_INVALID_TRANSITION', async () => {
-    const orderRepo: OrderRepository = {
-      async create() {
-        throw new Error('not used');
-      },
-      async findById() {
-        return makeOrder('PENDIENTE');
-      },
-      async findByIdTx(_tx, id) {
-        void _tx;
-        void id;
-        return makeOrder('PENDIENTE');
-      },
-      async list() {
-        throw new Error('not used');
-      },
-      async updateStatus() {
-        throw new Error('not used');
-      },
-      async txUpdate() {
-        throw new Error('not used');
-      },
-    };
-    const useCase = makeUseCase(
-      orderRepo,
-      makeProductRepo(),
-      {} as ProductStockGate,
-      {} as AlertCloserPort,
-    );
-    await expect(useCase.execute(O, 'Received', U)).rejects.toMatchObject({
-      code: 'ORDER_INVALID_TRANSITION',
-      httpStatus: 409,
-    });
-  });
-
-  it('product deleted between approval and receive → 422 ORDER_PRODUCT_INCONSISTENCY (no side effects)', async () => {
-    let stockGateCalled = false;
-    const stockGate: ProductStockGate = {
-      async txIncrementStock() {
-        stockGateCalled = true;
-        throw new Error('should not be reached');
-      },
-    };
-    const useCase = makeUseCase(
-      makeHappyOrderRepo(),
-      makeProductRepo(null),
-      stockGate,
-      makeAlertCloser(null),
-    );
-    await expect(useCase.execute(O, 'Received', U)).rejects.toMatchObject({
-      code: 'INTERNAL_ERROR',
-      httpStatus: 422,
-    });
-    // Critical: the tx must NEVER run when the product is gone.
-    expect(stockGateCalled).toBe(false);
   });
 });

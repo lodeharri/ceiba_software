@@ -1,7 +1,7 @@
 /**
- * Orders BC — ReceiveOrderUseCase (PR 2c, orders/spec.md, ADR-3).
+ * Orders BC — ReceiveOrderUseCase (PR 1.2, orders/spec.md, ADR-3).
  *
- * THE FOUR-STEP ATOMIC FLOW inside `prisma.$transaction`:
+ * THE FOUR-STEP ATOMIC FLOW inside `uow.execute()`:
  *
  *   1. `orderRepository.txUpdate(id, 'RECIBIDA')`
  *      First write inside tx — validates the state transition.
@@ -20,25 +20,11 @@
  *   Idempotency-Key is NOT used for this path.
  *
  * ROLLBACK BEHAVIOR:
- *   If step 2 or 3 throws, the entire prisma.$transaction rolls back.
+ *   If step 2 or 3 throws, the entire transaction rolls back.
  *   Step 1 has already set status to RECIBIDA — but the tx rollback restores
  *   it. No movement, no stock change, no alert mutation persists.
- *
- * PRODUCT LOOKUP (compose pattern):
- *   The product is fetched BEFORE entering the transaction (early validation,
- *   same pattern as `CreateOrderUseCase`). If the product was deleted
- *   between approval and receive, we throw OrderProductInconsistencyError
- *   (422) BEFORE any side effects. The fetched product is passed into the
- *   tx closure so the composed `Order` read model always has a real
- *   productName / productSku (never undefined for the UI).
- *
- * RESPONSE SHAPE:
- *   Returns `{ order, stockAfter, closedAlertId? }` where `order` is the
- *   composed flat `Order` read model (productName / productSku from the
- *   joined product). Mirrors the alerts BC `composeAlert` pattern.
  */
 
-import type { PrismaClient } from '@prisma/client';
 import type { OrderRepository } from '../domain/ports/order-repository.js';
 import type { ProductReadRepository } from '../domain/ports/product-read-repository.js';
 import type { ProductStockGate } from '../domain/ports/product-stock-gate.js';
@@ -47,9 +33,7 @@ import { OrderInvalidTransitionError } from '../domain/errors/order-invalid-tran
 import { OrderNotFoundError } from '../domain/errors/order-not-found.js';
 import { OrderProductInconsistencyError } from '../domain/errors/order-product-inconsistency.js';
 import { composeOrder, type OrderReadModel } from './compose-order.js';
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type TxClient = any;
+import type { UnitOfWork, TransactionContext } from '../../shared/domain/ports/unit-of-work.js';
 
 export interface ReceiveOrderResult {
   order: OrderReadModel;
@@ -59,7 +43,7 @@ export interface ReceiveOrderResult {
 
 export class ReceiveOrderUseCase {
   constructor(
-    private readonly prisma: PrismaClient,
+    private readonly uow: UnitOfWork,
     private readonly orderRepo: OrderRepository,
     private readonly productRepo: ProductReadRepository,
     private readonly stockGate: ProductStockGate,
@@ -80,49 +64,43 @@ export class ReceiveOrderUseCase {
     }
 
     // All steps inside one atomic transaction to prevent TOCTOU race conditions
-    return this.prisma.$transaction(
-      async (txRaw) => {
-        const tx = txRaw as TxClient;
+    return this.uow.execute(async (ctx: TransactionContext) => {
+      // Step 1: Find and validate state machine pre-condition inside tx
+      const order = await this.orderRepo.findByIdTx(ctx as unknown, orderId);
+      if (!order) {
+        throw new OrderNotFoundError(orderId);
+      }
+      if (order.status !== 'APROBADA') {
+        throw new OrderInvalidTransitionError(order.status, 'receive');
+      }
 
-        // Step 1: Find and validate state machine pre-condition inside tx
-        const order = await this.orderRepo.findByIdTx(tx, orderId);
-        if (!order) {
-          throw new OrderNotFoundError(orderId);
-        }
-        if (order.status !== 'APROBADA') {
-          throw new OrderInvalidTransitionError(order.status, 'receive');
-        }
+      // Step 2: txUpdate order to RECIBIDA
+      const updatedOrder = await this.orderRepo.txUpdate(ctx as unknown, orderId, 'RECIBIDA');
 
-        // Step 2: txUpdate order to RECIBIDA
-        const updatedOrder = await this.orderRepo.txUpdate(tx, orderId, 'RECIBIDA');
+      // Step 3: Increment stock via inventory gate (re-locks product row)
+      const recorded = await this.stockGate.txIncrementStock(ctx, {
+        productId: order.productId,
+        type: 'ENTRADA',
+        quantity: order.quantity,
+        reason,
+        userId,
+      });
 
-        // Step 3: Increment stock via inventory gate (re-locks product row)
-        const recorded = await this.stockGate.txIncrementStock(tx, {
-          productId: order.productId,
-          type: 'ENTRADA',
-          quantity: order.quantity,
-          reason,
-          userId,
-        });
+      // Step 4: Close alert if stock recovered above minimum
+      const closeResult = await this.alertCloser.txCloseIfOpenAndAboveMin(ctx, {
+        productId: order.productId,
+        newStock: recorded.stockAfter,
+        stockMin: recorded.stockMin,
+      });
 
-        // Step 4: Close alert if stock recovered above minimum
-        const closeResult = await this.alertCloser.txCloseIfOpenAndAboveMin(tx, {
-          productId: order.productId,
-          newStock: recorded.stockAfter,
-          stockMin: recorded.stockMin,
-        });
-
-        // Step 5: Compose the flat read model with the pre-fetched product
-        // snapshot. `product` is captured by closure from the early-validation
-        // step above, so we never produce undefined productName / productSku
-        // even if the product is concurrently being deleted.
-        return {
-          order: composeOrder(updatedOrder, product),
-          stockAfter: recorded.stockAfter,
-          closedAlertId: closeResult?.alertId ?? null,
-        };
-      },
-      { isolationLevel: 'ReadCommitted' },
-    );
+      // Step 5: Compose the flat read model with the pre-fetched product
+      // snapshot. `product` is captured by closure from the early-validation
+      // step above, so we never produce undefined productName / productSku.
+      return {
+        order: composeOrder(updatedOrder, product),
+        stockAfter: recorded.stockAfter,
+        closedAlertId: closeResult?.alertId ?? null,
+      };
+    });
   }
 }

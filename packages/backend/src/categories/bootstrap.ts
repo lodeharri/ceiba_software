@@ -1,18 +1,18 @@
 /**
- * Categories BC bootstrap (PR 2a).
+ * Categories BC bootstrap (PR 1.2).
  *
- * Wires `PrismaCategoryRepository` into the application layer.
+ * Wires `DrizzleCategoryRepository` into the application layer.
  */
 
-import { getPrismaClient, type PrismaLike } from '../shared/prisma-client.js';
+import { getDb, type Db } from '../shared/db.js';
 import { CreateCategoryUseCase } from './application/create-category.js';
 import { ListCategoriesUseCase } from './application/list-categories.js';
-import { PrismaCategoryRepository } from './infrastructure/prisma-category-repository.js';
+import { DrizzleCategoryRepository } from './infrastructure/drizzle-category-repository.js';
 import { createLogger } from '../shared/logger.js';
 import type { Logger as PinoLogger } from 'pino';
 
 export interface CategoriesBootstrap {
-  prisma: PrismaLike;
+  db: Db;
   logger: PinoLogger;
   listCategories: ListCategoriesUseCase;
   createCategory: CreateCategoryUseCase;
@@ -22,17 +22,15 @@ interface GlobalWithCategories {
   __mercadoExpressCategories?: CategoriesBootstrap;
 }
 
-export function bootstrapCategories(prismaOverride?: PrismaLike): CategoriesBootstrap {
+export function bootstrapCategories(dbOverride?: Db): CategoriesBootstrap {
   const g = globalThis as GlobalWithCategories;
   if (g.__mercadoExpressCategories) {
     return g.__mercadoExpressCategories;
   }
-  const prisma = (prismaOverride ?? getPrismaClient()) as unknown as ConstructorParameters<
-    typeof PrismaCategoryRepository
-  >[0];
-  const repo = new PrismaCategoryRepository(prisma);
+  const db = dbOverride ?? getDb();
+  const repo = new DrizzleCategoryRepository(db);
   const bootstrap: CategoriesBootstrap = {
-    prisma: prismaOverride ?? getPrismaClient(),
+    db,
     logger: createLogger().child({ bc: 'categories' }),
     listCategories: new ListCategoriesUseCase(repo),
     createCategory: new CreateCategoryUseCase(repo),

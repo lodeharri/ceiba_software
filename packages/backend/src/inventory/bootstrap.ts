@@ -1,40 +1,26 @@
 /**
- * Inventory BC bootstrap (PR 2b).
+ * Inventory BC bootstrap (PR 1.2).
  *
  * Wires the application service and infrastructure adapters for the
  * inventory Lambda.
- *
- * ## Dependency injection
- *
- * `StockMutationService` depends on `AlertCloserPort`, which is owned by
- * the `alerts` BC. The adapter for this port (`PrismaAlertCloserPort`)
- * is created in Work Unit 3; until then the bootstrap uses a no-op stub
- * that logs an info message. Production deployments MUST provide a real
- * implementation via the `alertCloser` override.
- *
- * ## Singleton accessor
- *
- * Handlers import `getInventoryBootstrap()` (rather than calling
- * `bootstrapInventory()` themselves) so the bootstrap is initialised
- * exactly once per Lambda execution.
  */
 
-import { getPrismaClient } from '../shared/prisma-client.js';
+import type { Pool } from 'pg';
+import { getPool, getDb } from '../shared/db.js';
+import { DrizzleUnitOfWork } from '../shared/infrastructure/drizzle-unit-of-work.js';
 import { createLogger } from '../shared/logger.js';
-import type { PrismaLike } from '../shared/prisma-client.js';
 import type { Logger as PinoLogger } from 'pino';
 import type { AlertCloserPort } from '../alerts/domain/ports/alert-closer-port.js';
 import { StockMutationService } from './application/stock-mutation-service.js';
-import {
-  PrismaStockMovementRepository,
-  type StockMovementPrisma,
-} from './infrastructure/prisma-stock-movement-repository.js';
+import { DrizzleStockMovementRepository } from './infrastructure/drizzle-stock-movement-repository.js';
+import type { UnitOfWork } from '../shared/domain/ports/unit-of-work.js';
 
 export interface InventoryBootstrap {
-  prisma: PrismaLike;
+  pool: Pool;
+  uow: UnitOfWork;
   logger: PinoLogger;
   stockMutationService: StockMutationService;
-  stockMovementRepository: PrismaStockMovementRepository;
+  stockMovementRepository: DrizzleStockMovementRepository;
 }
 
 // ── Default no-op AlertCloserPort (replaced by Work Unit 3) ──
@@ -64,15 +50,16 @@ export function bootstrapInventory(alertCloser?: AlertCloserPort): InventoryBoot
     return g.__mercadoExpressInventory;
   }
 
-  const prisma = getPrismaClient();
+  const pool = getPool();
+  const db = getDb();
+  const uow = new DrizzleUnitOfWork(pool);
   const logger = createLogger().child({ bc: 'inventory' });
-  const stockMovementRepository = new PrismaStockMovementRepository(
-    prisma as unknown as StockMovementPrisma,
-  );
-  const stockMutationService = new StockMutationService(prisma, alertCloser ?? noopAlertCloser);
+  const stockMovementRepository = new DrizzleStockMovementRepository(db);
+  const stockMutationService = new StockMutationService(uow, alertCloser ?? noopAlertCloser);
 
   const instance: InventoryBootstrap = {
-    prisma,
+    pool,
+    uow,
     logger,
     stockMutationService,
     stockMovementRepository,

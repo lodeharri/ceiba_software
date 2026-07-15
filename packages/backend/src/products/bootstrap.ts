@@ -1,56 +1,51 @@
 /**
- * Products BC bootstrap (PR 2a).
+ * Products BC bootstrap (PR 1.2).
  *
  * Wires all adapters into the application layer:
- *   - PrismaProductRepository        (findById/findBySku/create/update/list)
- *   - PrismaCategoryReadRepository   (findById/list for FK validation + filter)
+ *   - DrizzleProductRepository       (findById/findBySku/create/update/list)
+ *   - DrizzleCategoryReadRepository  (findById/list for FK validation + filter)
  *   - CreateProductUseCase / ListProductsUseCase / GetProductUseCase / UpdateProductUseCase
  */
 
-import { getPrismaClient, type PrismaLike } from '../shared/prisma-client.js';
+import { getDb, type Db } from '../shared/db.js';
 import { CreateProductUseCase } from './application/create-product.js';
 import { ListProductsUseCase } from './application/list-products.js';
 import { GetProductUseCase } from './application/get-product.js';
 import { UpdateProductUseCase } from './application/update-product.js';
-import { PrismaProductRepository } from './infrastructure/prisma-product-repository.js';
-import { PrismaCategoryReadRepository } from './infrastructure/prisma-category-read-repository.js';
-import { PrismaAlertReadModel } from './infrastructure/prisma-alert-read-model.js';
-import { PrismaAlertOpenerPort } from '../alerts/infrastructure/prisma-alert-opener-port.js';
+import { DrizzleProductRepository } from './infrastructure/drizzle-product-repository.js';
+import { DrizzleCategoryReadRepository } from './infrastructure/drizzle-category-read-repository.js';
+import { DrizzleAlertReadModel } from './infrastructure/drizzle-alert-read-model.js';
+import { DrizzleAlertOpenerPort } from '../alerts/infrastructure/drizzle-alert-opener-port.js';
 import { createLogger } from '../shared/logger.js';
 import type { Logger as PinoLogger } from 'pino';
 
 export interface ProductsBootstrap {
-  prisma: PrismaLike;
+  db: Db;
   logger: PinoLogger;
   createProduct: CreateProductUseCase;
   listProducts: ListProductsUseCase;
   getProduct: GetProductUseCase;
   updateProduct: UpdateProductUseCase;
   /** Categoría read repository is shared with the categories BC. */
-  categoryReadRepository: PrismaCategoryReadRepository;
+  categoryReadRepository: DrizzleCategoryReadRepository;
 }
 
 interface GlobalWithProducts {
   __mercadoExpressProducts?: ProductsBootstrap;
 }
 
-export function bootstrapProducts(prismaOverride?: PrismaLike): ProductsBootstrap {
+export function bootstrapProducts(dbOverride?: Db): ProductsBootstrap {
   const g = globalThis as GlobalWithProducts;
   if (g.__mercadoExpressProducts) {
     return g.__mercadoExpressProducts;
   }
-  const prisma = (prismaOverride ?? getPrismaClient()) as unknown as ConstructorParameters<
-    typeof PrismaProductRepository
-  >[0] &
-    ConstructorParameters<typeof PrismaCategoryReadRepository>[0] &
-    ConstructorParameters<typeof PrismaAlertReadModel>[0] &
-    PrismaLike;
-  const productRepo = new PrismaProductRepository(prisma);
-  const categoryRead = new PrismaCategoryReadRepository(prisma);
-  const alertReadModel = new PrismaAlertReadModel(prisma);
-  const alertOpener = new PrismaAlertOpenerPort(prisma);
+  const db = dbOverride ?? getDb();
+  const productRepo = new DrizzleProductRepository(db);
+  const categoryRead = new DrizzleCategoryReadRepository(db);
+  const alertReadModel = new DrizzleAlertReadModel(db);
+  const alertOpener = new DrizzleAlertOpenerPort(db);
   const bootstrap: ProductsBootstrap = {
-    prisma: prismaOverride ?? getPrismaClient(),
+    db,
     logger: createLogger().child({ bc: 'products' }),
     createProduct: new CreateProductUseCase(productRepo, categoryRead, alertOpener),
     listProducts: new ListProductsUseCase(productRepo, alertReadModel),
