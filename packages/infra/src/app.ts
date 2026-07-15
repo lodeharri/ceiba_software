@@ -21,7 +21,7 @@ import './env.js';
  *   Fn.importValue and derives the API Gateway hostname via Fn.split
  *   for the /api/* CloudFront behavior. No prop is passed from app.ts.
  *
- * F-003 fix: ApiStack Lambdas and MigrationsCustomResource receive `vpc`.
+ * F-003 fix: ApiStack Lambdas receive `vpc`. Migrations now run in CI.
  */
 
 import { App, type StackProps } from 'aws-cdk-lib';
@@ -160,10 +160,9 @@ export function createStageStacks(app: App, stage: Stage, props?: StackProps): S
 
   // ── Dependency wiring ───────────────────────────────────────────────────────
   // Deploy order: Database → Api → Frontend → Observability.
-  // Lambdas need DB schema (migrations); FrontendStack CloudFront needs API
-  // endpoint (imported via Fn.importValue inside FrontendStack).
+  // Lambdas need DB schema (migrations run in CI via migrate.yml).
+  // FrontendStack CloudFront needs API endpoint (imported via Fn.importValue).
   if (database) {
-    api.node.addDependency(database.migrationsNode);
     api.addDependency(database);
   }
   if (frontend) {

@@ -1,0 +1,112 @@
+name: migrate
+
+# Run migrations + seed against the dev RDS instance.
+# Triggered manually (workflow_dispatch) or automatically on push to main
+# after the DatabaseStack has been deployed.
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: 'Stage to migrate (dev | prod)'
+        required: false
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+  push:
+    branches: [main]
+    paths:
+      # Re-run migrations when DB schema or seed changes.
+      - 'packages/backend/src/db/**'
+      - 'packages/backend/drizzle/**'
+      - 'packages/backend/drizzle.config.ts'
+
+# Cancel in-progress runs when a new commit lands.
+concurrency:
+  group: migrate
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  migrate:
+    name: Run Drizzle migrations + seed
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: ${{ inputs.stage || 'dev' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared package
+        run: pnpm build
+
+      # AWS OIDC: assume the deploy role to read DATABASE_URL from Secrets Manager.
+      # The role ARN is configured as `OIDC_ROLE_ARN` in the GitHub environment
+      # secrets. Same role used by deploy-dev.yml.
+      - name: Configure AWS credentials (OIDC)
+        if: ${{ env.OIDC_ROLE_ARN != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.OIDC_ROLE_ARN }}
+          aws-region: us-east-1
+        env:
+          OIDC_ROLE_ARN: ${{ secrets.OIDC_ROLE_ARN }}
+
+      - name: Verify AWS credentials
+        run: aws sts get-caller-identity
+
+      # Fetch DATABASE_URL from the same Secrets Manager secret the CDK stack uses.
+      # The secret name follows the convention: MercadoExpress-{stage}-db-master
+      - name: Retrieve DATABASE_URL from Secrets Manager
+        id: db-secret
+        run: |
+          STAGE="${STAGE:-dev}"
+          SECRET_NAME="MercadoExpress-${STAGE}-db-master"
+          echo "Fetching $SECRET_NAME..."
+          RESULT=$(aws secretsmanager get-secret-value \
+            --secret-id "$SECRET_NAME" \
+            --query 'SecretString' \
+            --output text)
+          # The secret contains JSON:
+          # {"username":"...","password":"...","host":"...","port":"5432","dbname":"..."}
+          USERNAME=$(echo "$RESULT" | python3 -c \
+            "import sys,json; d=json.load(sys.stdin); print(d['username'])")
+          PASSWORD=$(echo "$RESULT" | python3 -c \
+            "import sys,json; d=json.load(sys.stdin); print(d['password'])")
+          HOST=$(echo "$RESULT" | python3 -c \
+            "import sys,json; d=json.load(sys.stdin); print(d['host'])")
+          DBNAME=$(echo "$RESULT" | python3 -c \
+            "import sys,json; d=json.load(sys.stdin); print(d['dbname'])")
+          DATABASE_URL="postgresql://${USERNAME}:${PASSWORD}@${HOST}:5432/${DBNAME}"
+          echo "DATABASE_URL=postgresql://${USERNAME}:***@${HOST}/$DBNAME"
+          echo "DATABASE_URL=$DATABASE_URL" >> "$GITHUB_ENV"
+        env:
+          STAGE: ${{ inputs.stage || 'dev' }}
+
+      - name: Run Drizzle migrations
+        run: pnpm --filter @mercadoexpress/backend db:migrate
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      - name: Run seed
+        run: pnpm --filter @mercadoexpress/backend db:seed
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          ADMIN_EMAIL: ${{ vars.ADMIN_EMAIL || 'admin@mercadoexpress.local' }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}

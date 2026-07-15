@@ -142,6 +142,37 @@ docker compose -f docker-compose.dev.yml down -v   # stop + drop volumes
 rm -rf packages/frontend/node_modules/.vite        # clear Vite cache
 ```
 
+## CI/CD
+
+### Migrations and seed
+
+Migrations and seed run in **GitHub Actions CI**, not as a CDK Custom Resource.
+The workflow lives in `.github/workflows/migrate.yml` and runs:
+
+1. `pnpm --filter backend db:migrate` — Drizzle schema changes via `drizzle-kit migrate`
+2. `pnpm --filter backend db:seed` — idempotent seed upserts
+
+**Trigger:**
+
+- Manual: `workflow_dispatch` with stage selector (dev / prod)
+- Automatic: push to `main` when `packages/backend/src/db/**`, `drizzle/**`, or
+  `drizzle.config.ts` changes
+
+**AWS access:** uses the same OIDC role as `deploy-dev.yml` (`OIDC_ROLE_ARN`
+GitHub environment secret). The workflow reads `DATABASE_URL` from
+`MercadoExpress-{stage}-db-master` in AWS Secrets Manager.
+
+### Deploy only
+
+Infrastructure deploy (CDK stacks, no DB changes):
+
+```bash
+# Dev
+cd packages/infra && pnpm exec cdk deploy MercadoExpress-dev --require-approval never
+```
+
+Or push to `main` and the `deploy-dev.yml` workflow handles it.
+
 ## Next step
 
 Start infrastructure first (`pnpm dev:up`), then in separate terminals run

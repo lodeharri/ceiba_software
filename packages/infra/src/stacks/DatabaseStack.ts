@@ -32,7 +32,7 @@ import * as rds from 'aws-cdk-lib/aws-rds';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { type Stage, infraConfig } from '../config.js';
-import { MigrationsCustomResource } from '../constructs/migrations.js';
+// MigrationsCustomResource removed — migrations now run in GitHub Actions CI (migrate.yml).
 
 export interface DatabaseStackProps extends StackProps {
   stage: Stage;
@@ -240,26 +240,11 @@ export class DatabaseStack extends Stack {
       exportName: `MercadoExpress-${stage}-DatabaseSecurityGroupId`,
     });
 
-    // Instantiate MigrationsCustomResource inside the DatabaseStack.
-    // The custom resource runs prisma migrate + seed against the DB once it
-    // is available. Downstream stacks depend on it via api.addDependency(database.migrationsNode).
-    //
-    // Pass ISecret objects and the DB instance so CDK can establish dependency edges
-    // between the Lambda and both the secrets and the DB. Without the DB dependency,
-    // CloudFormation resolves {{resolve:secretsmanager:...}} tokens before the DB exists
-    // (which populates the secret's JSON fields), causing CREATE_FAILED with
-    // "Could not find a value associated with JSONKey in SecretString".
-    const migrations = new MigrationsCustomResource(this, 'Migrations', {
-      stage,
-      databaseUrlSecret: dbSecret as unknown as secretsmanager.ISecret,
-      adminPasswordSecret: adminPassword as secretsmanager.ISecret,
-      vpc,
-      databaseInstance: database,
-    });
-    // Expose the migrations construct node so other stacks can add it as a dependency.
-    this.migrationsNode = migrations;
+    // Migrations run in GitHub Actions CI (.github/workflows/migrate.yml).
+    // No Custom Resource needed — removes the Lambda + provider from the stack.
+    this.migrationsNode = this;
   }
 
-  /** Node of the MigrationsCustomResource for use in addDependency. */
+  /** Node for use in addDependency (stack itself — no migrations Lambda needed). */
   public readonly migrationsNode: Construct;
 }
