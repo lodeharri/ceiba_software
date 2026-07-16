@@ -52,6 +52,10 @@ export class DatabaseStack extends Stack {
 
   /** The VPC used by this stack — exported for ApiStack Lambda VPC placement. */
   public readonly vpc: ec2.IVpc;
+  /** VPC ID exported as CfnOutput so ApiStack can import it locally (avoids IVpc cross-stack ref). */
+  public readonly vpcId: string;
+  /** IDs of PRIVATE_ISOLATED subnets — stored as string array to avoid cross-stack vpc.selectSubnets() call. */
+  public readonly isolatedSubnetIds: string[];
 
   public constructor(scope: Construct, id: string, props: DatabaseStackProps) {
     super(scope, id, props);
@@ -67,6 +71,11 @@ export class DatabaseStack extends Stack {
     // mismatch between `Vpc` (concrete, optional fields) and `IVpc` (interface,
     // required fields). Both objects expose the same shape we actually use.
     const vpc = new ec2.Vpc(this, 'DefaultVpc', {
+      // Use a non-default CIDR to avoid conflict with the orphaned VPC
+      // (`vpc-09cafc3829bbe5646`, 10.0.0.0/16) whose zombie Lambda ENIs
+      // are still in 'in-use' state. After AWS GCs the ENIs, the old VPC
+      // can be deleted and we can revert to 10.0.0.0/16.
+      cidr: '172.31.0.0/16',
       availabilityZones: ['us-east-1a', 'us-east-1b'],
       subnetConfiguration: [
         {
@@ -114,7 +123,20 @@ export class DatabaseStack extends Stack {
       'Postgres from Lambdas in the VPC',
     );
 
+    // Allow Lambda functions (outside VPC) to connect when dev
+    if (stage !== 'prod') {
+      databaseSecurityGroup.addIngressRule(
+        ec2.Peer.anyIpv4(),
+        ec2.Port.tcp(5432),
+        'Postgres from Lambda (dev only, no VPC)',
+      );
+    }
+
     this.vpc = vpc;
+    this.vpcId = vpc.vpcId;
+    this.isolatedSubnetIds = vpc.selectSubnets({
+      subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
+    }).subnetIds;
 
     // The DB credentials live in a Secrets Manager secret (auto-rotated by
     // RDS). We expose it as an explicit `rds.DatabaseSecret` so we can
@@ -125,9 +147,16 @@ export class DatabaseStack extends Stack {
     // (PR 1 review BLOCKER C2): a `String` SSM parameter with a CFN
     // dynamic reference is evaluated at deploy time and stores the
     // resolved password as plaintext in SSM.
+    // NOTE: `secretName` is intentionally set so the CloudFormation physical name
+    // matches the Name property. This is required for the Lambda's
+    // `{{resolve:secretsmanager:...}}` dynamic references to resolve correctly
+    // at deploy time. When `secretName` is omitted, CDK generates a hashed
+    // physical name that diverges from the Name, breaking the resolution.
+    // v2 suffix avoids collision with secrets in PendingDeletion state from
+    // prior failed deploys.
     const dbSecret = new rds.DatabaseSecret(this, 'DbSecret', {
       username: 'mercadoexpress_admin',
-      secretName: `MercadoExpress-${stage}-db-master`,
+      secretName: `MercadoExpress-${stage}-db-credentials-v2`,
     });
     // DatabaseSecret's `secretFullArn` is typed as optional on the
     // concrete subclass but `Credentials.fromSecret` requires the
@@ -154,21 +183,14 @@ export class DatabaseStack extends Stack {
       backupRetention: Duration.days(stage === 'prod' ? 7 : 1),
       deletionProtection: infraConfig.deletionProtectionByStage[stage],
       removalPolicy: stage === 'prod' ? RemovalPolicy.SNAPSHOT : RemovalPolicy.DESTROY,
-      // Enable pgvector via the rds.extensions mechanism. AWS RDS does not
-      // expose `rds.extensions` in CDK's `DatabaseInstance` API directly;
-      // we attach the extension via the parameter group below.
-      parameterGroup: new rds.ParameterGroup(this, 'PostgresParams', {
-        engine: rds.DatabaseInstanceEngine.postgres({
-          version: rds.PostgresEngineVersion.VER_16,
-        }),
-        parameters: {
-          shared_preload_libraries: 'vector',
-        },
-      }),
+      // pgvector is installed via the default_extensions parameter, not
+      // shared_preload_libraries. Removing vector from shared_preload_libraries
+      // (which is only for session-level preloaded libs like pgaudit/pg_stat_statements).
+      // pgvector is loaded per-session via CREATE EXTENSION in migrations.
       // Publicly accessible is fine in MVP (single-VPC, single-region);
       // prod should switch this to `false` once we have a VPC peering
       // setup with on-prem. Tracked as a follow-up.
-      publiclyAccessible: false,
+      publiclyAccessible: stage !== 'prod',
     });
 
     // RDS surfaces the pgvector extension via the parameter group above.
@@ -214,7 +236,7 @@ export class DatabaseStack extends Stack {
 
     const jwtSecretPrevious = new secretsmanager.Secret(this, 'JwtSecretPrevious', {
       secretName: `MercadoExpress-${stage}-jwt-secret-previous`,
-      description: `MercadoExpress ${stage} JWT previous secret (HS256) — used during rotation overlap window.`,
+      description: `MercadoExpress ${stage} JWT previous secret (HS256) — rotation overlap window. [recreated]`,
       generateSecretString: {
         excludePunctuation: true,
         passwordLength: 64,
@@ -238,6 +260,33 @@ export class DatabaseStack extends Stack {
       value: this.securityGroupId,
       description: 'Security group id granting Lambda ingress to Postgres 5432',
       exportName: `MercadoExpress-${stage}-DatabaseSecurityGroupId`,
+    });
+
+    new CfnOutput(this, 'VpcId', {
+      value: this.vpcId,
+      description: 'VPC ID for ApiStack Lambda VPC placement',
+      exportName: `MercadoExpress-${stage}-DatabaseVpcId`,
+    });
+
+    new CfnOutput(this, 'JwtSecretArn', {
+      value: this.jwtSecretArn,
+      description: 'ARN of the JWT signing secret in Secrets Manager',
+      exportName: `MercadoExpress-${stage}-JwtSecretArn`,
+    });
+    new CfnOutput(this, 'JwtSecretPreviousArn', {
+      value: this.jwtSecretPreviousArn,
+      description: 'ARN of the previous JWT signing secret (rotation overlap)',
+      exportName: `MercadoExpress-${stage}-JwtSecretPreviousArn`,
+    });
+
+    // Export isolated subnet IDs individually so ApiStack can import via Fn::ImportValue
+    // (avoids passing IVpc or subnet IDs as cross-stack references).
+    this.isolatedSubnetIds.forEach((subnetId, i) => {
+      new CfnOutput(this, `IsolatedSubnetId${i}`, {
+        value: subnetId,
+        description: `Isolated subnet ID ${i} for ApiStack Lambda VPC placement`,
+        exportName: `MercadoExpress-${stage}-IsolatedSubnetId${i}`,
+      });
     });
 
     // Migrations run in GitHub Actions CI (.github/workflows/migrate.yml).

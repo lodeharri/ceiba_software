@@ -33,6 +33,14 @@ export function getPool(): Pool {
     g.__mercadoExpressPool = new Pool({
       connectionString: process.env['DATABASE_URL'],
       max: 2,
+      // RDS Postgres requires SSL/TLS for all connections (parameter group
+      // has `rds.force_ssl=1` set, so plain TCP connections get rejected
+      // with pg_hba.conf error 28000). `rejectUnauthorized: false` accepts
+      // the RDS self-signed cert without requiring the full CA bundle in
+      // the Lambda deployment package — acceptable for dev. For prod,
+      // switch to `rejectUnauthorized: true` and bundle the RDS CA from
+      // https://truststore.pki.rds.amazonaws.com/.
+      ssl: process.env['DATABASE_URL_SSL'] === 'false' ? false : { rejectUnauthorized: false },
     });
   }
   return g.__mercadoExpressPool;

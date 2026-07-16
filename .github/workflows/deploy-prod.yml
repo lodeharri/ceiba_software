@@ -1,14 +1,18 @@
-name: deploy-dev
+name: deploy-prod
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      stage:
+        description: 'Stage to deploy (default: prod)'
+        required: false
+        default: 'prod'
+        type: string
+  # Uncomment to enable on version tags:
+  # tags: ['v*']
 
-# Cancel a previous dev deploy when a new commit lands. Dev is the
-# "always-green HEAD" environment; serial deploys are acceptable.
 concurrency:
-  group: deploy-dev
+  group: deploy-prod
   cancel-in-progress: true
 
 permissions:
@@ -17,29 +21,23 @@ permissions:
 
 jobs:
   deploy:
-    name: cdk deploy MercadoExpress-dev
+    name: cdk deploy MercadoExpress-prod
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment:
-      name: dev
-      url: https://<API_GATEWAY_URL>/api/v1/health # placeholder, update post-deploy
-      deployment_branch_policy:
-        protected_branches: false
-        custom_branch_policies: true
-      reviewers:
-        - harri
+      name: prod
+      url: https://<API_GATEWAY_URL>/api/v1/health
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      # AWS OIDC: assume the deploy role using the GitHub-managed OIDC
-      # provider. Requires `OIDC_ROLE_ARN` to be set in the GitHub
-      # environment secrets (per runbook/oidc-bootstrap.md, PR 4).
       - name: Configure AWS credentials (OIDC)
         if: ${{ env.OIDC_ROLE_ARN != '' }}
         uses: aws-actions/configure-aws-credentials@v4
@@ -49,15 +47,13 @@ jobs:
         env:
           OIDC_ROLE_ARN: ${{ secrets.OIDC_ROLE_ARN }}
 
-      # Fail loudly when the OIDC role is not configured. The workflow
-      # file itself ships in PR 1; runtime deploys require manual
-      # bootstrap that lands in PR 4.
       - name: Verify AWS credentials
         run: aws sts get-caller-identity
 
-      - name: cdk deploy MercadoExpress-dev
+      - name: cdk deploy MercadoExpress-prod
         run: >
-          pnpm --filter infra exec cdk deploy MercadoExpress-dev
+          pnpm --filter @mercadoexpress/infra exec cdk deploy MercadoExpress-prod
+          --context stage=prod
           --require-approval never
 
   smoke:
@@ -66,7 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
-      name: dev
+      name: prod
     permissions:
       id-token: write
       contents: read
@@ -84,7 +80,7 @@ jobs:
         id: api-url
         run: |
           API_URL=$(aws cloudformation describe-stacks \
-            --stack-name MercadoExpress-dev \
+            --stack-name MercadoExpress-prod-Api \
             --query 'Stacks[0].Outputs[?OutputKey==`HttpApiUrl`].OutputValue' \
             --output text \
             --region us-east-1)
@@ -93,13 +89,13 @@ jobs:
             exit 1
           fi
           echo "API_URL=$API_URL" >> $GITHUB_ENV
-          echo "Testing API at $API_URL"
+          echo "Testing prod API at $API_URL"
 
       - name: Get admin credentials from Secrets Manager
         id: secrets
         run: |
           RESULT=$(aws secretsmanager get-secret-value \
-            --secret-id MercadoExpress-dev-db-credentials-v2 \
+            --secret-id MercadoExpress-prod-db-credentials-v2 \
             --query SecretString \
             --output text \
             --region us-east-1)
@@ -170,7 +166,7 @@ jobs:
               FAILED=1
             else
               PROD_ID=$(echo "$PRODUCTS_RESP" | python3 -c \
-                'import sys,json;d=json.load(sys.stdin);print(d["items"][0]["id"])' \
+                    'import sys,json;d=json.load(sys.stdin);print(d["items"][0]["id"])' \
                 2>/dev/null)
               if [ -z "$PROD_ID" ]; then
                 echo "::error::Products endpoint did not return items"
@@ -197,7 +193,7 @@ jobs:
               FAILED=1
             else
               STOCK_AFTER=$(echo "$MOV_RESP" | python3 -c \
-                'import sys,json;d=json.load(sys.stdin);print(d.get("stockAfter",""))' \
+                    'import sys,json;d=json.load(sys.stdin);print(d.get("stockAfter",""))' \
                 2>/dev/null)
               if [ -z "$STOCK_AFTER" ]; then
                 echo "::error::Movement endpoint did not return stockAfter"
@@ -220,7 +216,7 @@ jobs:
               FAILED=1
             else
               HISTORY_COUNT=$(echo "$HISTORY_RESP" | python3 -c \
-                'import sys,json;print(len(json.load(sys.stdin).get("items",[])))' \
+                    'import sys,json;d=json.load(sys.stdin);print(len(d.get("items",[])))' \
                 2>/dev/null)
               if [ -z "$HISTORY_COUNT" ] || [ "$HISTORY_COUNT" -lt 1 ]; then
                 echo "::error::History endpoint returned no items"

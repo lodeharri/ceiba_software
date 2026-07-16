@@ -81,7 +81,7 @@ export function createStageStacks(app: App, stage: Stage, props?: StackProps): S
   // ── DatabaseStack (always first) ─────────────────────────────────────────────
   const database = skipRds
     ? undefined
-    : new DatabaseStack(app, `MercadoExpress-${stage}-Database-20260712`, {
+    : new DatabaseStack(app, `MercadoExpress-${stage}-Database`, {
         stage,
         ...stackProps,
       });
@@ -115,13 +115,11 @@ export function createStageStacks(app: App, stage: Stage, props?: StackProps): S
         };
 
   // ── ApiStack ────────────────────────────────────────────────────────────────
-  const api = new ApiStack(app, `MercadoExpress-${stage}-Api-20260712`, {
+  const api = new ApiStack(app, `MercadoExpress-${stage}-Api`, {
     stage,
     corsAllowOrigin,
     databaseSource,
     jwtSource, // kept for backward compat; jwtSecretArn wins when both are set
-    securityGroupId: database?.securityGroupId ?? '',
-    vpc: database?.vpc,
     databaseUrlSecretArn: database?.databaseUrlSecretArn,
     // Pass the new Secrets Manager ARNs when available (dev/prod).
     // Pass undefined when database is absent (localstack) so ApiStack's
@@ -136,27 +134,23 @@ export function createStageStacks(app: App, stage: Stage, props?: StackProps): S
   // for the /api/* CloudFront behavior (F-004 fix). No cross-stack read here.
   const frontend = skipCloudFront
     ? undefined
-    : new FrontendStack(app, `MercadoExpress-${stage}-Frontend-20260712`, {
+    : new FrontendStack(app, `MercadoExpress-${stage}-Frontend`, {
         stage,
         ...stackProps,
       });
 
   // ── ObservabilityStack ───────────────────────────────────────────────────────
-  const observability = new ObservabilityStack(
-    app,
-    `MercadoExpress-${stage}-Observability-20260712`,
-    {
-      stage,
-      lambdaFunctionNames: [
-        'auth-lambda',
-        'products-lambda',
-        'inventory-lambda',
-        'alerts-lambda',
-        'orders-lambda',
-      ],
-      ...stackProps,
-    },
-  );
+  const observability = new ObservabilityStack(app, `MercadoExpress-${stage}-Observability`, {
+    stage,
+    lambdaFunctionNames: [
+      'auth-lambda',
+      'products-lambda',
+      'inventory-lambda',
+      'alerts-lambda',
+      'orders-lambda',
+    ],
+    ...stackProps,
+  });
 
   // ── Dependency wiring ───────────────────────────────────────────────────────
   // Deploy order: Database → Api → Frontend → Observability.

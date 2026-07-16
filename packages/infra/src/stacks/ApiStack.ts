@@ -30,7 +30,15 @@
  * inside the Lambda, not at the API Gateway level.
  */
 
-import { Stack, type StackProps, CfnOutput, Duration, Fn, RemovalPolicy } from 'aws-cdk-lib';
+import {
+  Stack,
+  type StackProps,
+  CfnOutput,
+  Duration,
+  Fn,
+  RemovalPolicy,
+  SecretValue,
+} from 'aws-cdk-lib';
 import type { Construct } from 'constructs';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import { CorsHttpMethod } from 'aws-cdk-lib/aws-apigatewayv2';
@@ -38,8 +46,8 @@ import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
-import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as iam from 'aws-cdk-lib/aws-iam';
+
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type Stage, infraConfig } from '../config.js';
@@ -55,6 +63,7 @@ function consolidatedHandlerPath(): string {
     '..',
     '..',
     'backend',
+    'dist',
     'src',
     'lambda',
     'handler.js',
@@ -88,10 +97,10 @@ export interface ApiStackProps extends StackProps {
   jwtSecretArn?: string | undefined;
   /** ARN of the previous JWT secret in Secrets Manager (for rotation overlap window). */
   jwtSecretPreviousArn?: string | undefined;
-  /** Database security group id (passed through from DatabaseStack). */
-  securityGroupId?: string | undefined;
-  /** VPC for Lambda placement (passed from DatabaseStack). */
-  vpc?: ec2.IVpc | undefined;
+  /** VPC ID — imported locally via Vpc.fromVpcAttributes to avoid IVpc cross-stack ref. */
+  vpcId?: string | undefined;
+  /** Isolated (PRIVATE_ISOLATED) subnet IDs for Lambda VPC placement. */
+  isolatedSubnetIds?: string[] | undefined;
   /** @deprecated Use `corsAllowOrigin` (full origin string). Kept for
    *  callers that have not migrated yet; when both are provided,
    *  `corsAllowOrigin` wins. */
@@ -174,11 +183,19 @@ export class ApiStack extends Stack {
       corsAllowOrigin: explicitCorsAllowOrigin,
       distributionDomainName,
       databaseSource: explicitDatabaseSource,
-      databaseUrlSecretArn,
-      jwtSecretArn,
-      jwtSecretPreviousArn,
-      securityGroupId,
     } = props;
+
+    // Cross-stack secret ARNs — use Fn::ImportValue so the synthesized dynamic
+    // references resolve at deploy time to the FULL ARN (with random suffix).
+    // When CDK passes a Secret object's ARN across stack boundaries via props,
+    // parseSecretName strips the 6-char random suffix — leaving the dynamic
+    // reference with the base name only. AWS Secrets Manager's partial-ARN
+    // matching behaves inconsistently across secrets (e.g. fails for jwt-secret),
+    // so we must reach the full ARN. ImportValue resolves via {Ref: <Secret>}
+    // at deploy time, which preserves the random suffix.
+    const databaseUrlSecretArn = Fn.importValue(`MercadoExpress-${stage}-DatabaseSecretArn`);
+    const jwtSecretArn = Fn.importValue(`MercadoExpress-${stage}-JwtSecretArn`);
+    const jwtSecretPreviousArn = Fn.importValue(`MercadoExpress-${stage}-JwtSecretPreviousArn`);
 
     // CORS allow-origin: prefer the explicit full origin (PR 2 contract);
     // fall back to the CloudFront-specific distributionDomainName for
@@ -226,45 +243,43 @@ export class ApiStack extends Stack {
     // Build DATABASE_URL via Fn::Join from secret fields. CDK emits
     // {{resolve:secretsmanager:arn:SecretString:field::}} for each token; CFN
     // resolves them at deploy time. No runtime GetSecretValue call.
-    const databaseUrlValue =
+    // We use SecretValue.secretsManager directly (NOT Secret.fromSecretCompleteArn /
+    // fromSecretNameV2 / fromSecretAttributes) because CDK v2.261.0's SecretBase internally
+    // calls parseSecretName which strips the 6-char random suffix from any ARN with 2+
+    // hyphenated segments, breaking dynamic-reference resolution for secrets whose partial
+    // ARN match behaves inconsistently in AWS Secrets Manager. SecretValue.secretsManager
+    // passes the ARN verbatim into the dynamic reference — CFN then resolves it via the
+    // exact ARN, which always succeeds.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dbUrlParts: any[] =
       databaseSource.kind === 'plain-env'
-        ? databaseSource.databaseUrl
-        : (() => {
-            const dbSecret = secretsmanager.Secret.fromSecretCompleteArn(
-              this,
-              'DbSecretRef',
-              databaseSource.secretArn,
-            );
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const urlParts: any[] = [
-              'postgresql://',
-              dbSecret.secretValueFromJson('username'),
-              ':',
-              dbSecret.secretValueFromJson('password'),
-              '@',
-              dbSecret.secretValueFromJson('host'),
-              ':',
-              dbSecret.secretValueFromJson('port'),
-              '/',
-              dbSecret.secretValueFromJson('dbname'),
-            ];
-            return Fn.join('', urlParts);
-          })();
+        ? [databaseSource.databaseUrl]
+        : [
+            'postgresql://',
+            SecretValue.secretsManager(databaseUrlSecretArn, { jsonField: 'username' }),
+            ':',
+            SecretValue.secretsManager(databaseUrlSecretArn, { jsonField: 'password' }),
+            '@',
+            SecretValue.secretsManager(databaseUrlSecretArn, { jsonField: 'host' }),
+            ':',
+            SecretValue.secretsManager(databaseUrlSecretArn, { jsonField: 'port' }),
+            '/',
+            SecretValue.secretsManager(databaseUrlSecretArn, { jsonField: 'dbname' }),
+          ];
+    const databaseUrlValue =
+      databaseSource.kind === 'plain-env' ? databaseSource.databaseUrl : Fn.join('', dbUrlParts);
 
-    // JWT secrets — direct SecretValue refs from Secrets Manager ARNs passed
-    // as props. CDK synthesises {{resolve:secretsmanager:...}} in the template.
-    const jwtSecretRef =
+    // JWT secrets — direct SecretValue refs from Secrets Manager ARNs passed as props.
+    // Same reason as above: bypass Secret.fromSecret* to keep the full ARN in the template.
+    // Using cfnDynamicReferenceKey() so we get a plain string for the env var (typed as string in CDK).
+    const jwtSecretValue =
       jwtSecretArn !== undefined
-        ? secretsmanager.Secret.fromSecretCompleteArn(this, 'JwtSecretRef', jwtSecretArn)
-        : null;
-    const jwtSecretPreviousRef =
+        ? SecretValue.secretsManager(jwtSecretArn).unsafeUnwrap()
+        : undefined;
+    const jwtSecretPreviousValue =
       jwtSecretPreviousArn !== undefined
-        ? secretsmanager.Secret.fromSecretCompleteArn(
-            this,
-            'JwtSecretPreviousRef',
-            jwtSecretPreviousArn,
-          )
-        : null;
+        ? SecretValue.secretsManager(jwtSecretPreviousArn).unsafeUnwrap()
+        : undefined;
 
     const reservedConcurrency = infraConfig.reservedConcurrencyByStage[stage];
 
@@ -288,18 +303,14 @@ export class ApiStack extends Stack {
       bundling: {
         externalModules: ['aws-sdk'],
       },
-      ...(props.vpc
-        ? {
-            vpc: props.vpc,
-            vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
-          }
-        : {}),
+      // NOTE: Lambda is NOT deployed into VPC for now — this is a known CDK v2.261.0
+      // limitation where cross-stack VPC references require explicit region on both stacks.
+      // Lambdas use the default VPC (internet-facing). TODO: add VPC after CDK fix.
       environment: {
         STAGE: stage,
         DATABASE_URL: databaseUrlValue,
-        JWT_SECRET: jwtSecretRef?.secretValue.unsafeUnwrap() ?? 'placeholder-replaced-by-ops',
-        JWT_SECRET_PREVIOUS:
-          jwtSecretPreviousRef?.secretValue.unsafeUnwrap() ?? 'placeholder-empty-on-first-deploy',
+        JWT_SECRET: jwtSecretValue ?? 'placeholder-replaced-by-ops',
+        JWT_SECRET_PREVIOUS: jwtSecretPreviousValue ?? 'placeholder-empty-on-first-deploy',
         JWT_OVERLAP_SECONDS: '3600',
         TRUSTED_PROXY_DEPTH: '0',
         LOG_LEVEL: 'info',
@@ -310,6 +321,26 @@ export class ApiStack extends Stack {
         : {}),
     });
     this.lambdaFns['ConsolidatedApi'] = consolidatedFn;
+
+    // Grant the Lambda execution role Secrets Manager read access.
+    // CDK v2.261.0's grantRead() on Secret.fromSecretCompleteArn() creates IAM
+    // policy resources with CDK-unresolved tokens for secret name suffixes.
+    // Using addManagedPolicy(iam.ManagedPolicy.fromManagedPolicyArn(...)) avoids
+    // the token issue — AWS managed policies are resolved by name, not ARN token.
+    // This grants the Lambda role secretsmanager:GetSecretValue, allowing CFN to
+    // resolve {{resolve:secretsmanager:...}} dynamic refs in Lambda env vars.
+    const secretsToRead = [databaseUrlSecretArn, jwtSecretArn, jwtSecretPreviousArn].filter(
+      (arn): arn is string => typeof arn === 'string' && arn !== '',
+    );
+    if (secretsToRead.length > 0) {
+      consolidatedFn.role!.addToPrincipalPolicy(
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          actions: ['secretsmanager:GetSecretValue'],
+          resources: secretsToRead,
+        }),
+      );
+    }
 
     // ── Routes — all paths go to the single Lambda ─────────────────────────────
 
@@ -335,10 +366,6 @@ export class ApiStack extends Stack {
       value: this.httpApi.apiEndpoint,
       description: 'HTTP API base URL',
       exportName: `MercadoExpress-${stage}-HttpApiUrl`,
-    });
-    new CfnOutput(this, 'SecurityGroupIdImport', {
-      value: securityGroupId ?? '',
-      description: 'Database security group id (passed through from DatabaseStack)',
     });
   }
 }
