@@ -14,7 +14,7 @@
  *
  * The kept set (per the orchestrator's PR 2 task contract):
  *   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, POSTGRES_PORT,
- *   DATABASE_URL, LOCALSTACK_HOST, LOCALSTACK_PORT,
+ *   DATABASE_URL,
  *   LOCAL_DEV_NETWORK_NAME, AWS_REGION, AWS_ACCESS_KEY_ID,
  *   AWS_SECRET_ACCESS_KEY, STAGE, JWT_SECRET, JWT_SECRET_PREVIOUS,
  *   FRONTEND_PORT, VITE_API_BASE_URL.
@@ -50,8 +50,6 @@ const KEPT_KEYS = [
   'POSTGRES_DB',
   'POSTGRES_PORT',
   'DATABASE_URL',
-  'LOCALSTACK_HOST',
-  'LOCALSTACK_PORT',
   'LOCAL_DEV_NETWORK_NAME',
   'AWS_REGION',
   'AWS_ACCESS_KEY_ID',
@@ -120,18 +118,5 @@ describe('.env.dev.example — REQ-EVC-2 (kept keys present)', () => {
 describe('.env.dev.example — REQ-EVC-4 (env file structure)', () => {
   it('declares no more than 40 active KEY=value lines (NFR-1 file size)', () => {
     expect(activeLines.length).toBeLessThanOrEqual(40);
-  });
-
-  it('LOCALSTACK_SERVICES (if defined) trims out apigateway and lambda', () => {
-    // The spec drops the SERVICES interpolation; if .env.dev.example still
-    // declares it (for backwards-compat with old `.env.dev` files that
-    // reference `${LOCALSTACK_SERVICES}`), it MUST NOT include apigateway
-    // or lambda. The trimmed compose hardcodes the SERVICES value, so the
-    // env-file value is advisory only.
-    const line = activeLines.find((l) => l.startsWith('LOCALSTACK_SERVICES='));
-    if (line) {
-      expect(line).not.toMatch(/apigateway/);
-      expect(line).not.toMatch(/lambda/);
-    }
   });
 });

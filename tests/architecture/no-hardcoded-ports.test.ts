@@ -192,12 +192,7 @@ describe('Part E - dev-server port resolution contract', () => {
 describe('Part F - .env.dev.example corroboration', () => {
   it('declares every port-relevant env var that compose interpolates', () => {
     const text = readFileSync(ENV_FILE, 'utf8');
-    const requiredVars = [
-      'POSTGRES_PORT',
-      'LOCALSTACK_PORT',
-      'FRONTEND_PORT',
-      'FRONTEND_DOCKER_PORT',
-    ];
+    const requiredVars = ['POSTGRES_PORT', 'FRONTEND_PORT'];
     for (const v of requiredVars) {
       // Use indexOf instead of regex with dynamic input (lint rule).
       const linePresent = text.split('\n').some((l) => l.trim().startsWith(v + '='));

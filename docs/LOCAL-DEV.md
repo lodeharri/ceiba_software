@@ -1,45 +1,43 @@
 # Local Development
 
-PostgreSQL + LocalStack start in Docker; the wrapper-native dev server
+PostgreSQL runs in Docker; start everything with `pnpm dev` (api + web in separate terminals).; the wrapper-native dev server
 (`scripts/dev-server.ts`) and Vite run on the host with hot reload. This doc
 covers the happy path, what runs where, troubleshooting, and how to reset.
 
 ## Prerequisites
 
-- **Node.js ≥ 20** and **pnpm 9** (`corepack enable pnpm` once).
+- **Node.js >= 20** and **pnpm 9** (`corepack enable pnpm` once).
 - **Docker 24+** with Compose v2 (`docker compose version` should print v2.x).
-- About **2 GB of free RAM** for postgres + LocalStack + Vite + dev server.
-- Ports free on the host: **3001** (dev server), **4566** (LocalStack),
-  **5173** (Vite), **5432** (postgres). Override in `.env.dev` if any collide
-  (see [Troubleshooting](#troubleshooting)).
+- About **1.5 GB of free RAM** for postgres + Vite + dev server.
+- Ports free on the host: **3001** (dev server), **5173** (Vite), **5432** (postgres).
+  Override in `.env.dev` if any collide (see [Troubleshooting](#troubleshooting)).
 
 ## First run
 
 ```bash
 cp .env.dev.example .env.dev   # one-time copy; defaults are functional
 pnpm install                   # workspace deps
-pnpm build                     # compile @mercadoexpress/shared to dist/ (required for Lambda handlers)
-pnpm dev:api                  # terminal 1 → http://localhost:3001
-pnpm dev:web                  # terminal 2 → http://localhost:5173
+pnpm build                    # compile @mercadoexpress/shared to dist/
+pnpm setup                    # docker up + drizzle-kit migrate + seed
+# then: pnpm dev:api + pnpm dev:web (pnpm dev is broken - use separate terminals)
 ```
 
-> ℹ️ Note: `pnpm dev` (all-in-one) is currently broken due to a `concurrently -k` race
+> Note: `pnpm dev` (all-in-one) is currently broken due to a `concurrently -k` race
 > with `dev:up` (one-shot). Use `pnpm dev:api` + `pnpm dev:web` in separate terminals.
 
 Open <http://localhost:5173> for the SPA. The login screen talks to
-<http://localhost:3001/api/v1> (the dev server), which talks to
-<http://localhost:4566> (LocalStack) and `localhost:5432` (postgres).
+<http://localhost:3001/api/v1> (the dev server), which talks to `localhost:5432` (postgres).
 
 ## What runs where
 
-| Command          | Runs on              | Port | Purpose                                                     |
-| ---------------- | -------------------- | ---- | ----------------------------------------------------------- |
-| `pnpm dev`       | —                    | —    | ⚠️ BROKEN — use `pnpm dev:api` + `pnpm dev:web` instead.    |
-| `pnpm dev:up`    | docker               | —    | Starts postgres + LocalStack containers (waits for health). |
-| `pnpm dev:api`   | host (`tsx --watch`) | 3001 | The HTTP wrapper that invokes the real Lambda handlers.     |
-| `pnpm dev:web`   | host (`vite`)        | 5173 | The Vue 3 SPA with HMR.                                     |
-| `pnpm dev:down`  | docker               | —    | Stops the two containers (keeps volumes).                   |
-| `pnpm dev:reset` | host + docker        | —    | `dev:down -v` plus clears the Vite cache.                   |
+| Command          | Runs on              | Port | Purpose                                                |
+| ---------------- | -------------------- | ---- | ------------------------------------------------------ |
+| `pnpm dev`       | --                   | --   | BROKEN -- use `pnpm dev:api` + `pnpm dev:web` instead. |
+| `pnpm dev:up`    | docker               | --   | Starts postgres container (waits for health).          |
+| `pnpm dev:api`   | host (`tsx --watch`) | 3001 | HTTP wrapper that invokes Lambda handlers.             |
+| `pnpm dev:web`   | host (`vite`)        | 5173 | Vue 3 SPA with HMR.                                    |
+| `pnpm dev:down`  | docker               | --   | Stops postgres container (keeps volumes).              |
+| `pnpm dev:reset` | host + docker        | --   | `dev:down -v` plus clears the Vite cache.              |
 
 URLs once everything is up:
 
@@ -48,22 +46,9 @@ URLs once everything is up:
 | SPA (Vite)        | <http://localhost:5173>                              |
 | Dev server API    | <http://localhost:3001/api/v1>                       |
 | Dev server health | <http://localhost:3001/api/v1/health>                |
-| LocalStack health | <http://localhost:4566/_localstack/health>           |
 | PostgreSQL        | `localhost:5432` (user `ceiba`, db `mercadoexpress`) |
 
 ## Troubleshooting
-
-### LocalStack container keeps old state
-
-Symptoms: requests return stale data, or LocalStack health says
-`s3: error`. LocalStack stores state in the `localstack-data` named volume.
-
-Fix:
-
-```bash
-pnpm dev:down -v   # the -v flag drops the named volumes
-pnpm dev:up
-```
 
 ### Vite serves a stale module after a config change
 
@@ -81,9 +66,8 @@ pnpm dev:web
 
 ### Build fails with `VITE_API_BASE_URL is required. See docs/LOCAL-DEV.md`
 
-The `envValidation()` Vite plugin (in `packages/frontend/vite-plugins/`)
-fires whenever `VITE_API_BASE_URL` is unset or empty. The fix is to set it
-explicitly:
+The `envValidation()` Vite plugin fires whenever `VITE_API_BASE_URL` is unset or empty.
+The fix is to set it explicitly:
 
 ```bash
 # Either edit packages/frontend/.env.development:
@@ -93,24 +77,23 @@ VITE_API_BASE_URL=http://localhost:3001/api/v1
 VITE_API_BASE_URL=http://localhost:3001/api/v1 pnpm -C packages/frontend build
 ```
 
-### Port already in use (3001, 4566, 5173, 5432)
+### Port already in use (3001, 5173, 5432)
 
 Identify the holder and stop it:
 
 ```bash
-ss -ltnp 'sport = :3001 or sport = :4566 or sport = :5173 or sport = :5432'
+ss -ltnp 'sport = :3001 or sport = :5173 or sport = :5432'
 ```
 
 If you cannot free the port, override it in `.env.dev` (`POSTGRES_PORT`,
-`LOCALSTACK_PORT`, `FRONTEND_PORT`, `DEV_SERVER_PORT`) — every port is
-configurable.
+`FRONTEND_PORT`, `DEV_SERVER_PORT`) -- every port is configurable.
 
 ### DB not ready when `dev:api` starts
 
 `pnpm dev:up` waits on the postgres healthcheck before exiting, so by the
 time the runner reaches `dev:api` the DB should already be accepting
 connections. If you see connection-refused errors during the first ~10
-seconds, give it a moment — the AWS SDK retry policy in the wrapper-native
+seconds, give it a moment -- the AWS SDK retry policy in the wrapper-native
 dev server will retry automatically.
 
 If it persists:
@@ -130,8 +113,8 @@ pnpm dev:reset
 
 What that clears:
 
-- `postgres` + `localstack` containers (stopped and removed).
-- `pgdata` + `localstack-data` named volumes (database + LocalStack state).
+- `postgres` container (stopped and removed).
+- `pgdata` named volume (Postgres data).
 - `packages/frontend/node_modules/.vite` (Vite module cache).
 
 Power users can run the steps individually:
@@ -149,8 +132,8 @@ rm -rf packages/frontend/node_modules/.vite        # clear Vite cache
 Migrations and seed run in **GitHub Actions CI**, not as a CDK Custom Resource.
 The workflow lives in `.github/workflows/migrate.yml` and runs:
 
-1. `pnpm --filter backend db:migrate` — Drizzle schema changes via `drizzle-kit migrate`
-2. `pnpm --filter backend db:seed` — idempotent seed upserts
+1. `pnpm --filter backend db:migrate` -- Drizzle schema changes via `drizzle-kit migrate`
+2. `pnpm --filter backend db:seed` -- idempotent seed upserts
 
 **Trigger:**
 
@@ -178,5 +161,5 @@ Or push to `main` and the `deploy-dev.yml` workflow handles it.
 Start infrastructure first (`pnpm dev:up`), then in separate terminals run
 `pnpm dev:api` and `pnpm dev:web`. Open <http://localhost:5173> and the
 login screen will guide you from there. If anything in this doc is wrong or
-missing, the reset recipe is `pnpm dev:reset` — that always gets you back to
+missing, the reset recipe is `pnpm dev:reset` -- that always gets you back to
 a clean state.

@@ -21,13 +21,13 @@
  *                            (NEVER edit `.env.dev` itself).
  *   3. Install             — `pnpm install` (skipped with `--skip-install`).
  *   4. Compose up          — `pnpm dev:up` (idempotent).
- *   5. Healthcheck poll    — wait for postgres + localstack to be 'healthy'.
- *   6. Migrate             — `pnpm --filter backend exec prisma migrate deploy`.
+ *   5. Healthcheck poll    — wait for postgres to be 'healthy'.
+ *   6. Migrate             — `pnpm db:migrate` (drizzle-kit migrate).
  *   7. Seed                — `pnpm db:seed` (one retry on transient failure).
  *   8. Summary             — point the developer at `pnpm dev`.
  *
  * Idempotency: every phase is a no-op on re-run. `docker compose up -d` is a
- * no-op when the services are already healthy; `prisma migrate deploy` is
+ * no-op when the services are already healthy; `drizzle-kit migrate` is
  * idempotent against an already-migrated schema; the seed uses upserts.
  *
  * Exit codes:
@@ -140,25 +140,19 @@ function install(allowSkip: boolean): void {
 }
 
 function composeUp(): void {
-  step('Phase 4 — docker compose up');
-  // The root `pnpm dev:up` script invokes `docker compose -f docker-compose.dev.yml up -d`
-  // WITHOUT `--env-file`, which causes docker compose to fail to interpolate
-  // `${LOCALSTACK_HEALTHCHECK_RETRIES}` (and friends) with empty strings.
+  step('Phase 4 — docker compose up (equivalent to pnpm dev:up)');
   // We invoke docker compose directly with the env file loaded by this script.
   const envFile = existsSync('.env.dev') ? '.env.dev' : '.env.dev.example';
   const cmd = `docker compose --env-file ${envFile} -f docker-compose.dev.yml up -d`;
   const r = run(cmd, cmd);
   if (!r.ok) fail('docker compose up failed', r.message);
-  ok('postgres + localstack containers requested');
+  ok('postgres container requested');
 }
 
 function waitForHealthy(maxAttempts = 60, intervalMs = 2_000): void {
-  step('Phase 5 — wait for compose healthchecks (postgres, localstack)');
-  // ${POSTGRES_CONTAINER_NAME} / ${LOCALSTACK_CONTAINER_NAME} come from
-  // .env.dev. `compose -f docker-compose.dev.yml config` does NOT need the
-  // env file but the container-name interpolation in `docker inspect` does.
+  step('Phase 5 — wait for postgres to be healthy');
+  // ${POSTGRES_CONTAINER_NAME} comes from .env.dev.
   const postgresName = process.env['POSTGRES_CONTAINER_NAME'] ?? 'ceiba-postgres';
-  const localstackName = process.env['LOCALSTACK_CONTAINER_NAME'] ?? 'ceiba-localstack';
 
   function healthy(container: string): boolean {
     try {
@@ -174,8 +168,8 @@ function waitForHealthy(maxAttempts = 60, intervalMs = 2_000): void {
 
   const deadline = Date.now() + maxAttempts * intervalMs;
   while (Date.now() < deadline) {
-    if (healthy(postgresName) && healthy(localstackName)) {
-      ok(`postgres + localstack reported healthy`);
+    if (healthy(postgresName)) {
+      ok(`postgres reported healthy`);
       return;
     }
     process.stdout.write('.');
@@ -192,10 +186,10 @@ function waitForHealthy(maxAttempts = 60, intervalMs = 2_000): void {
 }
 
 function migrate(): void {
-  step('Phase 6 — prisma migrate deploy');
-  const cmd = 'pnpm --filter backend exec prisma migrate deploy';
+  step('Phase 6 — drizzle-kit migrate');
+  const cmd = 'pnpm db:migrate';
   const r = run(cmd, cmd);
-  if (!r.ok) fail('prisma migrate deploy failed', r.message);
+  if (!r.ok) fail('drizzle-kit migrate failed', r.message);
   ok('migrations applied');
 }
 
@@ -229,9 +223,8 @@ function summary(): void {
   process.stdout.write('│   next:  pnpm dev      (concurrent api + web)       │\n');
   process.stdout.write('│                                                    │\n');
   process.stdout.write('│   • API  http://localhost:3001                      │\n');
-  process.stdout.write('│   • Web  http://localhost:5173                      │\n');
+  process.stdout.write('│   • Web  http://localhost:5173  (pnpm dev:web)      │\n');
   process.stdout.write('│   • DBC  postgres   (port 5432)                     │\n');
-  process.stdout.write('│   • LSK  localstack (port 4566)                     │\n');
   process.stdout.write('│                                                    │\n');
   process.stdout.write('│   Health:   curl http://localhost:3001/api/v1/health │\n');
   process.stdout.write('└────────────────────────────────────────────────────┘\n');

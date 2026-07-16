@@ -7,10 +7,10 @@
  * `AWS_ENDPOINT_URL_S3`).
  *
  * Also asserts the doc is ≤ 250 lines (REQ-DOC-1 NFR-1) and that the
- * Troubleshooting section addresses the five known failure modes (REQ-DOC-4
- * scenario 1): stale LocalStack, stale Vite cache, missing
- * `VITE_API_BASE_URL`, port collisions, DB not ready. Plus a "reset" path
- * (REQ-DOC-4 scenario 2).
+ * Troubleshooting section addresses the four known failure modes (REQ-DOC-4
+ * scenario 1): stale Vite cache, missing `VITE_API_BASE_URL`, port collisions,
+ * DB not ready. Plus a "reset" path (REQ-DOC-4 scenario 2). LocalStack
+ * troubleshooting was removed in the LocalStack cleanup (PR 5 follow-up).
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
@@ -69,14 +69,13 @@ describe('docs/LOCAL-DEV.md — REQ-DOC-1, REQ-DOC-4 (no sidecar refs, ≤ 250 l
     expect(text).toContain('pnpm dev');
   });
 
-  it('Troubleshooting section addresses the 5 known failure modes (REQ-DOC-4 scenario 1)', () => {
+  it('Troubleshooting section addresses the 4 known failure modes (REQ-DOC-4 scenario 1)', () => {
     const text = loadDoc();
     // Locate the Troubleshooting section (case-insensitive heading match).
     const headingIdx = text.search(/^##\s+Troubleshooting/im);
     expect(headingIdx).toBeGreaterThanOrEqual(0);
     const tail = text.slice(headingIdx);
     // Required themes (each addressed with a fix).
-    expect(tail).toMatch(/LocalStack/i);
     expect(tail).toMatch(/Vite/i);
     expect(tail).toMatch(/VITE_API_BASE_URL/);
     expect(tail).toMatch(/(port|3001|5173|5432)/i);

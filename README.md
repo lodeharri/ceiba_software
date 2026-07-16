@@ -20,7 +20,8 @@ Inventory system for a Colombian retail chain. REST API + Vue 3 SPA + automated 
 - Docker Desktop (or Docker Engine + Compose v2)
 - Node.js 20.x via nvm or asdf
 - pnpm 9.x (`corepack enable pnpm` or `npm i -g pnpm`)
-- AWS CLI (optional, only if you want to inspect LocalStack state)
+- Quick start: `pnpm install && pnpm setup && pnpm dev:api` + `pnpm dev:web`
+- See [docs/LOCAL-DEV.md](docs/LOCAL-DEV.md) for detailed first-run guide
 
 ### Easiest path (5 minutes to running)
 
@@ -37,30 +38,21 @@ pnpm build
 # 2. Copy env file (defaults work; edit JWT_SECRET for real dev)
 cp .env.dev.example .env.dev
 
-# 3. Start infrastructure (postgres + localstack + frontend nginx)
-pnpm dev:up
-# verify: docker compose --env-file .env.dev -f docker-compose.dev.yml ps
-# expect: ceiba-postgres, ceiba-localstack, ceiba-frontend all "Up (healthy)"
-
-# 4. Backend deps + DB setup (first time only)
+# 3. One-shot setup: start postgres + run migrations + seed
 pnpm setup
-# Runs: prisma migrate deploy + prisma db seed (admin user + 6 categories + 6 products)
+# Runs: docker compose up -d (postgres only) + drizzle-kit migrate + idempotent seed
 
-# 5. Start dev API + Vite frontend in separate terminals
+# 4. Start dev API + Vite frontend in separate terminals
+pnpm dev       # runs: pnpm dev:api + pnpm dev:web (use separate terminals instead)
 pnpm dev:api   # terminal 1 → http://localhost:3001
-pnpm dev:web   # terminal 2 → http://localhost:5173 (or 5174/5175 if 5173 is taken)
-
-> ℹ️  Note: `pnpm dev` (all-in-one) is currently broken due to a `concurrently -k` race
-> with `dev:up` (one-shot). Use `pnpm dev:api` + `pnpm dev:web` in separate terminals.
-> The dockerized frontend nginx occupies `:5173` first, so Vite usually falls back to `:5174`.
-> Always check the output of `pnpm dev:web` to confirm the actual port before opening the browser.
+pnpm dev:web   # terminal 2 → http://localhost:5173
 ```
 
 After startup:
 
 | Service               | URL                                                                                                                                               |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| SPA (Vite dev server) | <http://localhost:5173> (or `:5174`/`:5175` if `:5173` is taken — see `pnpm dev:web` output)                                                      |
+| SPA (Vite dev server) | <http://localhost:5173>                                                                                                                           |
 | API (dev server)      | <http://localhost:3001/api/v1>                                                                                                                    |
 | API health check      | `curl http://localhost:3001/api/v1/health`                                                                                                        |
 | Login                 | `curl -X POST http://localhost:3001/api/v1/auth/login -H 'Content-Type: application/json' -d '{"username":"admin","password":"<your-password>"}'` |
@@ -116,13 +108,15 @@ cd packages/infra && pnpm deploy:prod
 
 ### What gets deployed
 
-- **4 CloudFormation stacks** with `-20260712` suffix (e.g., `MercadoExpress-dev-Database-20260712`)
+- **4 CloudFormation stacks** with `-MercadoExpress-dev` prefix (e.g., `MercadoExpress-dev-Database`)
 - **1 RDS Postgres** t3.micro + pgvector extension
 - **2 VPC Interface Endpoints** (Secrets Manager + SSM, ~$14.60/mo)
 - **1 S3 Gateway Endpoint** (free)
-- **5 Lambda functions**: `auth-lambda`, `products-lambda`, `inventory-lambda`, `alerts-lambda`, `orders-lambda`
+- **1 Lambda function**: `MercadoExpress-dev-api` (internal router dispatches to BC handlers)
 - **1 HTTP API v2** (API Gateway)
 - **1 S3 bucket** + **1 CloudFront distribution**
+
+Migrations run via `.github/workflows/migrate.yml` (GitHub Actions, not CDK Custom Resource) before each deploy.
 
 ### Smoke-test after deploy
 
@@ -153,9 +147,9 @@ aws cloudformation describe-stacks \
 
 ## Architecture
 
-### Why 5 separate Lambdas (one per BC + auth)?
+### Why a single Lambda with internal routing (not 5 separate Lambdas)?
 
-Each bounded context (products, inventory, alerts, orders, auth) deploys, scales, and fails independently. Cold starts are localized to specific routes. Auth has no JWT middleware at the gateway — it issues tokens; all others verify JWT internally via the `jwt-middleware` shared module.
+A single `MercadoExpress-dev-api` Lambda uses an internal router that dispatches to bounded-context handlers. This keeps deployment simple (one artifact, one cold start) while preserving clean code boundaries — each BC handler is independently testable. Future work could split BCs into separate Lambdas if scale demands it.
 
 ### Why HTTP API v2 (not REST API)?
 
@@ -181,9 +175,9 @@ TypeScript = same language as Lambdas (shared types possible). Stack constructs 
 
 Workspace monorepo with shared dependencies. Strict peer dependency resolution. Disk-efficient content-addressable store. `--frozen-lockfile` in CI ensures reproducibility.
 
-### Why Prisma (not raw SQL or TypeORM)?
+### Why Drizzle (not raw SQL or Prisma)?
 
-Type-safe queries eliminate manual SQL string bugs. Auto-generated client + migrations. `binaryTargets = ["native", "rhel-openssl-3.0.x"]` covers the Lambda AL2 runtime. Migrations run via `prisma migrate deploy` invoked from a CDK CustomResource.
+Pure TypeScript schema with no native binary. Tiny client bundle (~50 KB vs Prisma's ~16 MB) that bundles cleanly into Lambda or Fargate without esbuild tricks, custom Lambda Layers, or `binaryTargets` configuration. SQL templates are first-class so `db.transaction` works for cross-BC atomic operations. Migrations run via `drizzle-kit migrate` invoked from a GitHub Actions workflow, not a CDK CustomResource.
 
 ### Why pgvector?
 
@@ -219,30 +213,30 @@ The lockfile pins exact versions. Caret ranges allow patch/minor updates within 
               ▼ /api/*               ▼ / (static)
 ┌──────────────────────────┐  ┌─────────────────────────────┐
 │  API Gateway HTTP v2      │  │  S3: SPA bundle             │
-│  Routes → 5 Lambdas      │  │  index.html + assets         │
+│  Routes → 1 Lambda       │  │  index.html + assets        │
 └──────────────────────────┘  └─────────────────────────────┘
               │
               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  5 NodejsFunction Lambdas (PRIVATE_ISOLATED subnets)        │
-│  - auth-lambda        (no JWT — issues tokens)             │
-│  - products-lambda    (JWT — products + categories)         │
-│  - inventory-lambda   (JWT — stock movements)              │
-│  - alerts-lambda      (JWT — low-stock alerts)            │
-│  - orders-lambda      (JWT — purchase orders)              │
+│  1 NodejsFunction Lambda (PRIVATE_ISOLATED subnets)          │
+│  MercadoExpress-dev-api                                     │
+│  Internal router dispatches to BC handlers:                 │
+│    auth/ products/ inventory/ alerts/ orders/                │
 │  DATABASE_URL resolved via Secrets Manager at synth time    │
 └─────────────────────────┬───────────────────────────────────┘
                           │ (VPC Interface Endpoints)
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  RDS Postgres 16 + pgvector (t3.micro)                     │
-│  Secrets Manager: JWT_SECRET + JWT_PREVIOUS + ADMIN_PWD   │
-│  SSM Parameter: JWT rotation handle (legacy)               │
-│  CloudWatch Logs: 7-day retention per Lambda               │
+│  RDS Postgres 16 + pgvector (t3.micro)                      │
+│  Secrets Manager: JWT_SECRET + JWT_PREVIOUS + ADMIN_PWD     │
+│  CloudWatch Logs: 7-day retention per Lambda                │
 │  CloudWatch Alarms: concurrent executions, errors, throttles │
-│  SNS Topic: alarm notifications                            │
+│  SNS Topic: alarm notifications                              │
+│  TODO: RDS Proxy for production (Lambda → RDS Proxy → RDS)  │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+**Migrations**: run via `.github/workflows/migrate.yml` (GitHub Actions) before each deploy, not as a CDK Custom Resource.
 
 ---
 
@@ -259,7 +253,7 @@ The lockfile pins exact versions. Caret ranges allow patch/minor updates within 
 | Auth              | bcryptjs + jose       | latest     | Pure-JS bcrypt, modern JWT                 |
 | DB                | RDS Postgres          | 16         | Managed, pgvector support                  |
 | DB extension      | pgvector              | latest     | Semantic search on products                |
-| ORM               | Prisma                | 5.20.0     | Type-safe queries, migrations              |
+| ORM               | Drizzle               | 0.45.2     | Pure TypeScript schema, no native binary   |
 | API Gateway       | HTTP API v2           | —          | ~70% cheaper than REST API                 |
 | Frontend          | Vue                   | 3.5        | Composition API + script setup             |
 | Frontend lang     | TypeScript            | 5.x        | Type safety end-to-end                     |
@@ -856,36 +850,39 @@ Test counts (from last audit):
 ```
 ceiba_software/
 ├── packages/
-│   ├── backend/                 # Lambda handlers + Prisma schema
-│   │   └── prisma/
-│   │       ├── schema.prisma    # DB models (users, products, categories,
-│   │       │                     # stock_movements, alerts, purchase_orders)
-│   │       └── seed.ts          # Admin user + 6 categories + 6 products
+│   ├── backend/                 # Lambda handlers + Drizzle schema
 │   │   └── src/
-│   │       ├── auth/            # Auth bounded context
-│   │       ├── products/        # Products + Categories BC (co-hosted)
-│   │       ├── inventory/       # Inventory BC (stock movements)
-│   │       ├── alerts/          # Alerts BC
-│   │       ├── orders/          # Orders BC
-│   │       └── shared/          # Cross-BC: prisma-client, jwt-middleware,
-│   │                             # dispatcher, movement logic
+│   │       ├── db/
+│   │       │   ├── schema.ts     # DB models (users, products, categories,
+│   │       │   └── seed.ts       # stock_movements, alerts, purchase_orders)
+│   │       ├── auth/             # Auth bounded context
+│   │       ├── products/         # Products + Categories BC (co-hosted)
+│   │       ├── inventory/        # Inventory BC (stock movements)
+│   │       ├── alerts/           # Alerts BC
+│   │       ├── orders/           # Orders BC
+│   │       ├── lambda/           # Consolidated Lambda entry (handler.ts)
+│   │       └── shared/           # Cross-BC: db client, UnitOfWork port,
+│   │                              # jwt-middleware, dispatcher
+│   │   drizzle/                  # Generated SQL migrations (run by CI)
+│   │   drizzle.config.ts
 │   ├── frontend/                # Vue 3 SPA (Atomic Design)
 │   ├── infra/                   # AWS CDK app (4 stacks)
 │   │   └── src/
 │   │       ├── stacks/
 │   │       │   ├── DatabaseStack.ts
-│   │       │   ├── ApiStack.ts   # LAMBDAS const: all 5 route maps
+│   │       │   ├── ApiStack.ts   # 1 Lambda with internal BC router
 │   │       │   ├── FrontendStack.ts
 │   │       │   └── ObservabilityStack.ts
 │   │       └── config.ts        # All infra knobs (region, throttling, etc.)
 │   └── shared/                  # Zod schemas, domain primitives, error codes
-├── docker-compose.dev.yml       # postgres + localstack + frontend nginx
+├── docker-compose.dev.yml       # postgres only (single container)
 ├── docs/
 │   ├── LOCAL-DEV.md              # Detailed local setup guide
 │   └── adr/                     # Architecture Decision Records
 ├── scripts/
 │   ├── dev-server.ts            # Local Lambda simulation (tsx --watch)
-│   └── setup.ts                 # Bootstrap: migrations + seed
+│   ├── setup.ts                 # Bootstrap: docker up + migrations + seed
+│   └── db.ts                    # DB script wrapper (migrate + seed)
 ├── openspec/                    # SDD change history
 ├── porject.md                   # Product spec (RF-01..RF-06, business rules)
 └── README.md                    # ← you are here
@@ -906,8 +903,6 @@ pnpm dev:down && pnpm dev:up
 
 # View container logs
 docker logs ceiba-postgres -f
-docker logs ceiba-localstack -f
-docker logs ceiba-frontend -f
 
 # Tail Lambda logs on AWS (after deploy)
 AWS_PROFILE=harrison-cicd aws logs tail \
@@ -924,9 +919,9 @@ cd packages/infra && pnpm synth:dev
 
 ## Troubleshooting
 
-- **"Prisma cannot find engine for rhel-openssl-3.0.x"**: Lambda needs `binaryTargets = [..., "rhel-openssl-3.0.x"]` in `schema.prisma`. This is already set — if you see this error, run `pnpm --filter @mercadoexpress/backend prisma generate`.
+- **"Cannot find module '@mercadoexpress/shared'"**: run `pnpm --filter @mercadoexpress/shared build` (handlers import compiled dist/).
 - **"EADDRINUSE port 3001"**: another `dev:api` process running. Kill with `pkill -f dev-server` or set `DEV_SERVER_PORT` in `.env.dev`.
-- **"Cannot find module '@prisma/client'"**: run `pnpm --filter @mercadoexpress/backend prisma generate`.
+- **"relation does not exist" on first request**: run `pnpm db:migrate` to apply pending Drizzle migrations.
 - **pgvector not available**: verify `docker/postgres-init/01-pgvector.sql` mounts correctly in `docker-compose.dev.yml`.
 - **Lambda timeout on first deploy**: RDS creation takes 5–8 min. Check `aws rds describe-db-instances --profile harrison-cicd`.
 - **Login returns 401**: re-run `pnpm --filter @mercadoexpress/backend db:seed` to ensure the admin user exists with the `ADMIN_PASSWORD` from your `.env.dev`. JWT secrets (HS256) sign tokens; they do NOT match the bcrypt password hash.

@@ -6,8 +6,7 @@
 #
 # All hosts, ports, secrets, container names, network names, and volume names
 # are interpolated from .env.dev / .env.dev.local. NEVER hardcode a port or
-# URL here — see openspec/changes/replace-localstack-dev-server/design.md §3.1
-# and spec REQ-DEM-* (docker-env-minimal) + REQ-EVC-* (env-vars-cleanup).
+# URL here.
 #
 name: ${COMPOSE_PROJECT_NAME}
 
@@ -46,62 +45,6 @@ services:
       timeout: ${HEALTHCHECK_TIMEOUT}
       retries: ${POSTGRES_HEALTHCHECK_RETRIES}
 
-  localstack:
-    image: ${LOCALSTACK_IMAGE}
-    container_name: ${LOCALSTACK_CONTAINER_NAME}
-    env_file:
-      - .env.dev
-      - .env.dev.local
-    environment:
-      SERVICES: serverless,s3,sqs,sns,secretsmanager,iam,sts,cloudformation
-      DEFAULT_REGION: ${AWS_REGION}
-      AWS_DEFAULT_REGION: ${AWS_REGION}
-      DEBUG: ${LOCALSTACK_DEBUG}
-      PERSISTENCE: ${LOCALSTACK_PERSISTENCE}
-    ports:
-      - '${LOCALSTACK_PORT}:${LOCALSTACK_PORT}'
-    volumes:
-      - localstack-data:/var/lib/localstack
-    networks:
-      - local-dev
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - >-
-          curl -sf
-          "http://$${LOCALSTACK_HOST}:$${LOCALSTACK_PORT}/_localstack/health"
-          >/dev/null
-      interval: ${LOCALSTACK_HEALTHCHECK_INTERVAL}
-      timeout: ${HEALTHCHECK_TIMEOUT}
-      retries: ${LOCALSTACK_HEALTHCHECK_RETRIES}
-
-  frontend:
-    build:
-      context: .
-      dockerfile: packages/frontend/Dockerfile
-      args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
-    container_name: ${FRONTEND_CONTAINER_NAME}
-    env_file:
-      - .env.dev
-      - .env.dev.local
-    environment:
-      # Container-side runtime info (not used by nginx but useful for `docker exec` debugging)
-      FRONTEND_PORT: ${FRONTEND_PORT}
-      FRONTEND_DOCKER_PORT: ${FRONTEND_DOCKER_PORT}
-    ports:
-      # Browser-facing :FRONTEND_PORT -> container :FRONTEND_DOCKER_PORT
-      - '${FRONTEND_PORT}:${FRONTEND_DOCKER_PORT}'
-    networks:
-      - local-dev
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - 'wget -qO- http://127.0.0.1:${FRONTEND_DOCKER_PORT}/ >/dev/null || exit 1'
-      interval: ${HEALTHCHECK_INTERVAL}
-      timeout: ${HEALTHCHECK_TIMEOUT}
-      retries: ${FRONTEND_HEALTHCHECK_RETRIES}
-
 networks:
   local-dev:
     name: ${LOCAL_DEV_NETWORK_NAME}
@@ -109,5 +52,3 @@ networks:
 volumes:
   pgdata:
     name: ${POSTGRES_VOLUME_NAME}
-  localstack-data:
-    name: ${LOCALSTACK_VOLUME_NAME}

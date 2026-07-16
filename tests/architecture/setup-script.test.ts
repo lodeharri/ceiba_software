@@ -4,7 +4,7 @@
  * After PR 4 the developer flow reduces to:
  *
  *   pnpm install
- *   pnpm setup    # one-shot: env copy → docker up → prisma migrate → seed
+ *   pnpm setup    # one-shot: env copy → docker up → drizzle-kit migrate → seed
  *   pnpm dev      # concurrent dev:api + dev:web
  *
  * This architecture test locks the locked step list so a future refactor
@@ -17,8 +17,8 @@
  *   3. `pnpm install` (skipped when `--skip-install` is passed).
  *   4. `pnpm dev:up` (idempotent — `docker compose up -d` is a no-op when
  *      the containers are already healthy).
- *   5. Wait for the docker-compose healthchecks on `postgres` and `localstack`.
- *   6. `pnpm --filter backend exec prisma migrate deploy`.
+ *   5. Wait for the docker-compose healthcheck on `postgres`.
+ *   6. `pnpm db:migrate` (runs drizzle-kit migrate).
  *   7. `pnpm db:seed` (retried once on transient failure — see the script
  *      for the retry policy).
  *   8. Print a success summary with the next-step pointer (`pnpm dev`).
@@ -84,7 +84,7 @@ describe('scripts/setup.ts — locked step sequence (PR 4 boot path)', () => {
     }
   }
 
-  it('covers the seven canonical phases in order', () => {
+  it('covers the eight canonical phases in order', () => {
     let cursor = 0;
     for (const snippet of [
       // Phase 1 — pre-flight
@@ -100,7 +100,7 @@ describe('scripts/setup.ts — locked step sequence (PR 4 boot path)', () => {
       // Phase 5 — wait for healthchecks
       'healthy',
       // Phase 6 — migrations
-      'prisma migrate deploy',
+      'pnpm db:migrate',
       // Phase 7 — seed
       'pnpm db:seed',
     ]) {
@@ -111,7 +111,7 @@ describe('scripts/setup.ts — locked step sequence (PR 4 boot path)', () => {
   });
 
   it('legacy expectOrdered helper retained for explicit calls', () => {
-    expectOrdered(['pnpm dev', 'prisma migrate deploy']);
+    expectOrdered(['pnpm dev', 'pnpm db:migrate']);
     expect(1).toBe(1);
   });
 

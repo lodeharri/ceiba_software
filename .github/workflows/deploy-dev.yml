@@ -58,34 +58,190 @@ jobs:
         run: aws sts get-caller-identity
 
       - name: cdk deploy MercadoExpress-dev
-        run: pnpm --filter infra exec cdk deploy MercadoExpress-dev --require-approval never
+        run: >
+          pnpm --filter infra exec cdk deploy MercadoExpress-dev
+          --require-approval never
 
-      - name: Smoke test (post-deploy)
-        if: success()
+  smoke:
+    name: Post-deploy smoke tests
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: dev
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        if: ${{ env.OIDC_ROLE_ARN != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.OIDC_ROLE_ARN }}
+          aws-region: us-east-1
+        env:
+          OIDC_ROLE_ARN: ${{ secrets.OIDC_ROLE_ARN }}
+
+      - name: Get API URL from CloudFormation
+        id: api-url
         run: |
           API_URL=$(aws cloudformation describe-stacks \
             --stack-name MercadoExpress-dev \
             --query 'Stacks[0].Outputs[?OutputKey==`HttpApiUrl`].OutputValue' \
-            --output text)
-          echo "Smoke testing $API_URL/api/v1/health..."
-          for i in 1 2 3 4 5; do
-            HTTP=$(curl -sS -o /dev/null -w '%{http_code}' "$API_URL/api/v1/health" || true)
-            if [ "$HTTP" = "200" ]; then
-              echo "health OK ($HTTP)"; break
+            --output text \
+            --region us-east-1)
+          if [ -z "$API_URL" ]; then
+            echo "::error::API URL not found in stack outputs"
+            exit 1
+          fi
+          echo "API_URL=$API_URL" >> $GITHUB_ENV
+          echo "Testing API at $API_URL"
+
+      - name: Get admin credentials from Secrets Manager
+        id: secrets
+        run: |
+          RESULT=$(aws secretsmanager get-secret-value \
+            --secret-id MercadoExpress-dev-db-master \
+            --query SecretString \
+            --output text \
+            --region us-east-1)
+          ADMIN_PASS=$(echo "$RESULT" | python3 -c \
+            "import sys, json; print(json.load(sys.stdin)['password'])")
+          if [ -z "$ADMIN_PASS" ]; then
+            echo "::error::Could not retrieve admin password from secret"
+            exit 1
+          fi
+          echo "::add-mask::$ADMIN_PASS"
+          echo "ADMIN_PASS=$ADMIN_PASS" >> $GITHUB_ENV
+
+      - name: Wait for API to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf "$API_URL/api/v1/health" > /dev/null 2>&1; then
+              echo "API is ready"
+              exit 0
             fi
-            echo "attempt $i: HTTP $HTTP, retrying in 10s..."; sleep 10
+            echo "Attempt $i/30: API not ready, waiting 10s..."
+            sleep 10
           done
-          if [ "$HTTP" != "200" ]; then
-            echo "health FAILED after 5 attempts"; exit 1
-          fi
-          # Smoke test login endpoint: expect 401 (invalid credentials), proving
-          # the API is wired to the DB and JWT is working.
+          echo "::error::API did not become ready in 5 minutes"
+          exit 1
+
+      - name: Run smoke tests
+        run: |
+          set -euo pipefail
+          FAILED=0
+
+          echo "=== 1. GET /health (no auth) ==="
           HTTP=$(curl -sS -o /dev/null -w '%{http_code}' \
-            -X POST "$API_URL/api/v1/auth/login" \
-            -H "Content-Type: application/json" \
-            -d '{"username":"smoke","password":"smoke"}')
-          if [ "$HTTP" = "401" ]; then
-            echo "login smoke OK (got 401 for bad creds, API is wired)"
+            "$API_URL/api/v1/health")
+          if [ "$HTTP" != "200" ]; then
+            echo "::error::Health check failed: HTTP $HTTP"
+            FAILED=1
           else
-            echo "login smoke FAILED: expected 401, got $HTTP"; exit 1
+            echo "✓ /health OK (HTTP 200)"
           fi
+
+          echo "=== 2. POST /auth/login ==="
+          LOGIN_RESP=$(curl -sf -X POST "$API_URL/api/v1/auth/login" \
+            -H 'Content-Type: application/json' \
+            -d "{\"username\":\"admin\",\"password\":\"$ADMIN_PASS\"}")
+          if [ -z "$LOGIN_RESP" ]; then
+            echo "::error::Login endpoint returned empty response"
+            FAILED=1
+          else
+            TOKEN=$(echo "$LOGIN_RESP" | python3 -c \
+              "import sys, json; print(json.load(sys.stdin).get('token', ''))")
+            if [ -z "$TOKEN" ]; then
+              echo "::error::Login did not return token"
+              FAILED=1
+            else
+              echo "✓ Login OK (token prefix: ${TOKEN:0:20}...)"
+            fi
+          fi
+
+          echo "=== 3. GET /products (auth) ==="
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Skipping /products — no token from login"
+            FAILED=1
+          else
+            PRODUCTS_RESP=$(curl -sf -H "Authorization: Bearer $TOKEN" \
+              "$API_URL/api/v1/products?page=1&size=3")
+            if [ -z "$PRODUCTS_RESP" ]; then
+              echo "::error::Products endpoint returned empty response"
+              FAILED=1
+            else
+              PROD_ID=$(echo "$PRODUCTS_RESP" | python3 -c \
+                'import sys,json;d=json.load(sys.stdin);print(d["items"][0]["id"])' \
+                2>/dev/null)
+              if [ -z "$PROD_ID" ]; then
+                echo "::error::Products endpoint did not return items"
+                FAILED=1
+              else
+                echo "✓ /products OK (productId: $PROD_ID)"
+                echo "PROD_ID=$PROD_ID" >> $GITHUB_ENV
+              fi
+            fi
+          fi
+
+          echo "=== 4. POST /movements (cross-BC transaction) ==="
+          if [ -z "$PROD_ID" ] || [ -z "$TOKEN" ]; then
+            echo "::error::Skipping /movements — missing productId or token"
+            FAILED=1
+          else
+            MOV_RESP=$(curl -sf \
+              -X POST "$API_URL/api/v1/products/$PROD_ID/movements" \
+              -H "Authorization: Bearer $TOKEN" \
+              -H 'Content-Type: application/json' \
+              -d '{"type":"ENTRADA","quantity":1,"reason":"ci-smoke-test"}')
+            if [ -z "$MOV_RESP" ]; then
+              echo "::error::Movement endpoint returned empty response"
+              FAILED=1
+            else
+              STOCK_AFTER=$(echo "$MOV_RESP" | python3 -c \
+                'import sys,json;d=json.load(sys.stdin);print(d.get("stockAfter",""))' \
+                2>/dev/null)
+              if [ -z "$STOCK_AFTER" ]; then
+                echo "::error::Movement endpoint did not return stockAfter"
+                FAILED=1
+              else
+                echo "✓ POST /movements OK (stockAfter=$STOCK_AFTER)"
+              fi
+            fi
+          fi
+
+          echo "=== 5. GET /movements (history) ==="
+          if [ -z "$PROD_ID" ] || [ -z "$TOKEN" ]; then
+            echo "::error::Skipping /movements history — missing productId"
+            FAILED=1
+          else
+            HISTORY_RESP=$(curl -sf -H "Authorization: Bearer $TOKEN" \
+              "$API_URL/api/v1/products/$PROD_ID/movements?page=1&size=3")
+            if [ -z "$HISTORY_RESP" ]; then
+              echo "::error::History endpoint returned empty response"
+              FAILED=1
+            else
+              HISTORY_COUNT=$(echo "$HISTORY_RESP" | python3 -c \
+                'import sys,json;print(len(json.load(sys.stdin).get("items",[])))' \
+                2>/dev/null)
+              if [ -z "$HISTORY_COUNT" ] || [ "$HISTORY_COUNT" -lt 1 ]; then
+                echo "::error::History endpoint returned no items"
+                FAILED=1
+              else
+                echo "✓ GET /movements history OK ($HISTORY_COUNT movement(s))"
+              fi
+            fi
+          fi
+
+          if [ $FAILED -ne 0 ]; then
+            echo ""
+            echo "::error::Smoke tests failed — see above for details"
+            exit 1
+          fi
+          echo ""
+          echo "=== ALL SMOKE TESTS PASSED ==="
+
+      - name: Cleanup secrets
+        if: always()
+        run: |
+          unset ADMIN_PASS

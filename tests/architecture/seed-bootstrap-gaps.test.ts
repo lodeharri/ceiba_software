@@ -6,7 +6,7 @@
  *   DEFECT 1 — Missing dotenv in seed.ts:
  *     `seed.ts` does NOT load `.env.dev` before reading `ADMIN_USERNAME`,
  *     `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and `BCRYPT_COST` from `process.env`.
- *     This means running `tsx prisma/seed.ts` (or `pnpm db:seed`) from a
+ *     This means running `tsx src/db/seed.ts` (or `pnpm db:seed`) from a
  *     fresh shell fails with "Missing required env var" even when those
  *     variables are correctly set in `.env.dev`.
  *
@@ -20,15 +20,15 @@
  *
  * Required contracts (file-system only — no DB, no network):
  *
- *   1. `packages/backend/prisma/seed.ts` MUST load dotenv within the first
- *      20 lines so env vars are available before `PrismaClient` is instantiated
- *      (which reads `DATABASE_URL`) and before the required-var guard runs.
+ *   1. `packages/backend/src/db/seed.ts` MUST load dotenv within the first
+ *      20 lines so env vars are available before `db.connect()` is called
+ *      and before the required-var guard runs.
  *
- *   2. `packages/backend/prisma/seed.ts` MUST import `bcryptjs`, NOT `bcrypt`
+ *   2. `packages/backend/src/db/seed.ts` MUST import `bcryptjs`, NOT `bcrypt`
  *      (native), so the seed process starts without a module-not-found error.
  *
- *   3. `packages/backend/package.json` script `db:migrate` MUST be wrapped
- *      with `dotenv -e .env.dev --` so the migration CustomResource Lambda
+ *   3. Root `package.json` script `db:migrate` MUST use `tsx scripts/db.ts migrate`
+ *      so the wrapper loads `.env.dev` before the migration command
  *      receives `DATABASE_URL` from `.env.dev` (the same env file used by
  *      `dev:up` to initialise the Postgres container).
  *
@@ -44,41 +44,38 @@ import { dirname, resolve } from 'node:path';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..');
 const BACKEND_ROOT = resolve(ROOT, 'packages', 'backend');
-const SEED_FILE = resolve(BACKEND_ROOT, 'prisma', 'seed.ts');
-const PKG_FILE = resolve(BACKEND_ROOT, 'package.json');
+const SEED_FILE = resolve(BACKEND_ROOT, 'src', 'db', 'seed.ts');
+const ROOT_PKG_FILE = resolve(ROOT, 'package.json');
 
 const seedSource = readFileSync(SEED_FILE, 'utf8');
 
-type BackendPkg = {
+type Pkg = {
   scripts?: Record<string, string>;
   devDependencies?: Record<string, string>;
 };
 
-function readBackendPkg(): BackendPkg {
-  const text = readFileSync(PKG_FILE, 'utf8');
+function readRootPkg(): Pkg {
+  const text = readFileSync(ROOT_PKG_FILE, 'utf8');
   try {
-    return JSON.parse(text) as BackendPkg;
+    return JSON.parse(text) as Pkg;
   } catch (err) {
     throw new Error(
-      `Could not parse packages/backend/package.json: ${err instanceof Error ? err.message : String(err)}`,
+      `Could not parse root package.json: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }
 
+// Contract 1 — dotenv loads BEFORE bcryptjs / required-var guard
 // ---------------------------------------------------------------------------
-// Contract 1 — dotenv loads BEFORE PrismaClient / required-var guard
-// ---------------------------------------------------------------------------
-describe('packages/backend/prisma/seed.ts — loads dotenv before any env consumer', () => {
-  it('contains dotenv before the PrismaClient import (positional contract)', () => {
+describe('packages/backend/src/db/seed.ts — loads dotenv before any env consumer', () => {
+  it('contains dotenv before bcryptjs (positional contract)', () => {
     // Mirrors the positional check in `no-bootstrap-gaps.test.ts` for dev-server.ts:
-    // dotenv must appear before `PrismaClient` (the first env consumer).
+    // dotenv must appear before bcryptjs (the first env-dependent import).
     const dotenvIdx = seedSource.split('\n').findIndex((l) => /dotenv/.test(l));
-    const prismaIdx = seedSource
-      .split('\n')
-      .findIndex((l) => /from\s+['"]@prisma\/client['"]/.test(l));
+    const bcryptIdx = seedSource.split('\n').findIndex((l) => /from\s+['"]bcryptjs['"]/.test(l));
     expect(dotenvIdx).toBeGreaterThanOrEqual(0);
-    expect(prismaIdx).toBeGreaterThanOrEqual(0);
-    expect(dotenvIdx).toBeLessThan(prismaIdx);
+    expect(bcryptIdx).toBeGreaterThanOrEqual(0);
+    expect(dotenvIdx).toBeLessThan(bcryptIdx);
   });
 
   it('prefers .env.dev / .env.dev.example over bare .env (project convention)', () => {
@@ -91,7 +88,7 @@ describe('packages/backend/prisma/seed.ts — loads dotenv before any env consum
 // ---------------------------------------------------------------------------
 // Contract 2 — bcryptjs (pure JS), NOT native bcrypt
 // ---------------------------------------------------------------------------
-describe('packages/backend/prisma/seed.ts — uses bcryptjs (not native bcrypt)', () => {
+describe('packages/backend/src/db/seed.ts — uses bcryptjs (not native bcrypt)', () => {
   it('imports bcryptjs, not bcrypt (native C++ addon)', () => {
     // The native `bcrypt` module is not in the dependency tree.
     // The architectural decision is `bcryptjs` (pure JS) so the seed works
@@ -104,31 +101,29 @@ describe('packages/backend/prisma/seed.ts — uses bcryptjs (not native bcrypt)'
 });
 
 // ---------------------------------------------------------------------------
-// Contract 3 — db:migrate script wraps prisma with dotenv-cli
+// Contract 3 — root db:migrate wraps drizzle-kit via scripts/db.ts
 // ---------------------------------------------------------------------------
-describe('packages/backend/package.json — db:migrate uses dotenv-cli', () => {
-  it('db:migrate script is wrapped with dotenv -e .env.dev --', () => {
-    const pkg = readBackendPkg();
+describe('root package.json — db:migrate loads .env.dev before running', () => {
+  it('db:migrate script loads .env.dev via scripts/db.ts', () => {
+    const pkg = readRootPkg();
     const script = pkg.scripts?.['db:migrate'];
 
     expect(script).toBeDefined();
-    if (!script) throw new Error('db:migrate script missing from backend package.json');
+    if (!script) throw new Error('db:migrate script missing from root package.json');
 
-    // Must use dotenv-cli's `-e .env.dev` flag so DATABASE_URL is available
-    // to the Prisma CLI (which runs the migrations SQL inside the Lambda).
-    // The script runs from packages/backend/ so the path to workspace-root .env.dev
-    // is ../../.env.dev (pnpm --filter runs the script in the backend dir).
-    expect(script).toMatch(/dotenv\s+-e\s+.*\.env\.dev\s+--/);
+    // scripts/db.ts loads dotenv + .env.dev before running the actual migrate command,
+    // so DATABASE_URL is available to drizzle-kit.
+    expect(script).toMatch(/tsx\s+scripts\/db\.ts\s+migrate/);
   });
 
-  it('db:seed is NOT wrapped (dotenv lives inside seed.ts)', () => {
-    const pkg = readBackendPkg();
+  it('db:seed script loads .env.dev via scripts/db.ts', () => {
+    const pkg = readRootPkg();
     const script = pkg.scripts?.['db:seed'];
 
     expect(script).toBeDefined();
-    if (!script) throw new Error('db:seed script missing from backend package.json');
+    if (!script) throw new Error('db:seed script missing from root package.json');
 
-    // The seed loads dotenv itself — no need for a second wrapping layer.
-    expect(script).not.toMatch(/dotenv\s+-e/);
+    // The seed wrapper loads dotenv itself before invoking the seed logic.
+    expect(script).toMatch(/tsx\s+scripts\/db\.ts\s+seed/);
   });
 });

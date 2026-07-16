@@ -24,10 +24,19 @@ import { dirname, resolve } from 'node:path';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..');
-const ROOT_PACKAGE_JSON = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')) as {
-  scripts?: Record<string, string>;
-  devDependencies?: Record<string, string>;
-};
+const ROOT_PACKAGE_JSON = (() => {
+  const text = readFileSync(resolve(ROOT, 'package.json'), 'utf8');
+  try {
+    return JSON.parse(text) as {
+      scripts?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+  } catch (err) {
+    throw new Error(
+      `Could not parse root package.json: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+})();
 
 describe('root package.json — PR 1 scripts block (REQ-NDS-1, design §5)', () => {
   it('declares the six dev scripts: dev, dev:up, dev:api, dev:web, dev:down, dev:reset', () => {
@@ -47,9 +56,9 @@ describe('root package.json — PR 1 scripts block (REQ-NDS-1, design §5)', () 
     );
   });
 
-  it('dev starts all three runners through concurrently with the prefixed colours', () => {
+  it('dev starts api + web runners through concurrently with the prefixed colours', () => {
     expect(ROOT_PACKAGE_JSON.scripts?.['dev']).toMatch(
-      /pnpm env:bootstrap && concurrently -k -n db,api,web -c blue,green,magenta /,
+      /pnpm env:bootstrap && concurrently -k -n api,web -c green,magenta /,
     );
   });
 });

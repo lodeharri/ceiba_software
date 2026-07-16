@@ -1,17 +1,14 @@
 /**
- * .env.dev.example - frontend container defaults (PR 5).
+ * .env.dev.example - frontend Vite defaults (PR 5).
  *
  * Locks the contract that .env.dev.example declares the env vars
- * consumed by the new frontend: docker-compose service and by the
- * Vite SPA build:
+ * consumed by the Vite SPA build:
  *   - FRONTEND_PORT                  (browser-facing; default 5173)
  *   - VITE_API_BASE_URL              (build-time API base URL)
- *   - FRONTEND_CONTAINER_NAME        (compose container_name)
- *   - FRONTEND_DOCKER_PORT           (in-container port nginx binds to)
- *   - FRONTEND_HEALTHCHECK_RETRIES   (compose healthcheck retries)
  *
- * Also asserts that no other FRONTEND_* keys exist that aren't wired
- * into compose (catches accidental orphans).
+ * The nginx frontend container was removed in the LocalStack cleanup
+ * (PR 5 follow-up). FRONTEND_CONTAINER_NAME, FRONTEND_DOCKER_PORT, and
+ * FRONTEND_HEALTHCHECK_RETRIES are no longer declared.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -22,7 +19,6 @@ import { dirname, resolve } from 'node:path';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..', '..');
 const ENV_FILE = resolve(ROOT, '.env.dev.example');
-const COMPOSE_FILE = resolve(ROOT, 'docker-compose.dev.yml');
 const ENV_VALIDATION = resolve(ROOT, 'packages/frontend/vite-plugins/env-validation.ts');
 
 function parseEnv(text: string): Map<string, string> {
@@ -39,26 +35,7 @@ function parseEnv(text: string): Map<string, string> {
   return out;
 }
 
-describe('.env.dev.example - frontend container defaults (PR 5)', () => {
-  it('declares FRONTEND_CONTAINER_NAME=ceiba-frontend', () => {
-    const text = readFileSync(ENV_FILE, 'utf8');
-    const map = parseEnv(text);
-    expect(map.get('FRONTEND_CONTAINER_NAME')).toBe('ceiba-frontend');
-  });
-
-  it('declares FRONTEND_DOCKER_PORT (default 80 - nginx binds in-container)', () => {
-    const text = readFileSync(ENV_FILE, 'utf8');
-    const map = parseEnv(text);
-    expect(map.get('FRONTEND_DOCKER_PORT')).toBe('80');
-  });
-
-  it('declares FRONTEND_HEALTHCHECK_RETRIES (positive integer)', () => {
-    const text = readFileSync(ENV_FILE, 'utf8');
-    const map = parseEnv(text);
-    const value = map.get('FRONTEND_HEALTHCHECK_RETRIES') ?? '';
-    expect(Number(value)).toBeGreaterThan(0);
-  });
-
+describe('.env.dev.example - frontend Vite defaults (PR 5 follow-up)', () => {
   it('declares FRONTEND_PORT (browser-facing; default 5173)', () => {
     const text = readFileSync(ENV_FILE, 'utf8');
     const map = parseEnv(text);
@@ -70,19 +47,31 @@ describe('.env.dev.example - frontend container defaults (PR 5)', () => {
     const map = parseEnv(text);
     expect(map.get('VITE_API_BASE_URL')).toBe('http://localhost:3001/api/v1');
   });
+
+  it('does NOT declare FRONTEND_CONTAINER_NAME (nginx container removed)', () => {
+    const text = readFileSync(ENV_FILE, 'utf8');
+    const map = parseEnv(text);
+    expect(map.has('FRONTEND_CONTAINER_NAME')).toBe(false);
+  });
+
+  it('does NOT declare FRONTEND_DOCKER_PORT (nginx container removed)', () => {
+    const text = readFileSync(ENV_FILE, 'utf8');
+    const map = parseEnv(text);
+    expect(map.has('FRONTEND_DOCKER_PORT')).toBe(false);
+  });
 });
 
-describe('.env.dev.example - no orphan FRONTEND_* keys (PR 5)', () => {
-  it('every FRONTEND_* key is wired into docker-compose.dev.yml', () => {
+describe('.env.dev.example - no orphan FRONTEND_* keys (PR 5 follow-up)', () => {
+  it('every FRONTEND_* key is wired into vite.config.ts (not compose)', () => {
     const envText = readFileSync(ENV_FILE, 'utf8');
-    const composeText = readFileSync(COMPOSE_FILE, 'utf8');
+    const viteConfig = readFileSync(resolve(ROOT, 'packages/frontend/vite.config.ts'), 'utf8');
     const env = parseEnv(envText);
     const frontendKeys = [...env.keys()].filter((k) => k.startsWith('FRONTEND_'));
     expect(frontendKeys.length).toBeGreaterThan(0);
 
     for (const key of frontendKeys) {
-      const interpolation = '${' + key + '}';
-      expect(composeText).toContain(interpolation);
+      // The nginx compose service is gone; FRONTEND_PORT is now used by vite.config.ts.
+      expect(viteConfig).toContain(key);
     }
   });
 
