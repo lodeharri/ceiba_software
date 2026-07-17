@@ -54,7 +54,7 @@ jobs:
 
       - name: cdk deploy MercadoExpress-dev
         run: >
-          pnpm --filter infra exec cdk deploy MercadoExpress-dev
+          pnpm --filter infra exec cdk deploy --all
           --require-approval never
 
   smoke:
