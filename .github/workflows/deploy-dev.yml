@@ -49,6 +49,9 @@ jobs:
       - name: Verify AWS credentials
         run: aws sts get-caller-identity
 
+      - name: Build infra package
+        run: pnpm --filter infra build
+
       - name: cdk deploy MercadoExpress-dev
         run: >
           pnpm --filter infra exec cdk deploy MercadoExpress-dev
