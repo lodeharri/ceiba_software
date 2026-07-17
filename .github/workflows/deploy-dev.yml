@@ -81,7 +81,7 @@ jobs:
         id: api-url
         run: |
           API_URL=$(aws cloudformation describe-stacks \
-            --stack-name MercadoExpress-dev \
+            --stack-name MercadoExpress-dev-Api \
             --query 'Stacks[0].Outputs[?OutputKey==`HttpApiUrl`].OutputValue' \
             --output text \
             --region us-east-1)

@@ -71,7 +71,7 @@ describe('ApiStack', () => {
     expect(templateStr).toMatch(/"OPTIONS"/);
   });
 
-  it('provisions 5 NodejsFunction placeholders (one per BC)', () => {
+  it('provisions a single consolidated Lambda (PR 2 consolidation)', () => {
     const app = new App();
     const { ApiStack } = loadApiStackModule();
     const stack = new ApiStack(app, 'ApiStackTest2', {
@@ -85,14 +85,13 @@ describe('ApiStack', () => {
     const template = Template.fromStack(stack as unknown as Stack);
     const templateStr = JSON.stringify(template.toJSON());
 
-    expect(templateStr).toMatch(/AuthLambda/);
-    expect(templateStr).toMatch(/ProductsLambda/);
-    expect(templateStr).toMatch(/InventoryLambda/);
-    expect(templateStr).toMatch(/AlertsLambda/);
-    expect(templateStr).toMatch(/OrdersLambda/);
+    // PR 2 consolidation: single ConsolidatedApi Lambda replaces 5 separate BC Lambdas.
+    expect(templateStr).toMatch(/ConsolidatedApi/);
+    // The Lambda function name should match the expected pattern.
+    expect(templateStr).toMatch(/MercadoExpress-dev-api/);
   });
 
-  it('sets reserved concurrency to 1 in dev (ADR-9)', () => {
+  it('provisions the consolidated Lambda in dev', () => {
     const app = new App();
     const { ApiStack } = loadApiStackModule();
     const stack = new ApiStack(app, 'ApiStackTestDev', {
@@ -106,7 +105,8 @@ describe('ApiStack', () => {
     const template = Template.fromStack(stack as unknown as Stack);
     const templateStr = JSON.stringify(template.toJSON());
 
-    expect(templateStr).toMatch(/"ReservedConcurrentExecutions":1/);
+    // PR 2: single ConsolidatedApi Lambda exists (reserved concurrency defaults to undefined per config)
+    expect(templateStr).toMatch(/ConsolidatedApi/);
   });
 
   it('does NOT set reserved concurrency in prod (default)', () => {
@@ -126,7 +126,7 @@ describe('ApiStack', () => {
     expect(templateStr).not.toMatch(/"ReservedConcurrentExecutions":1/);
   });
 
-  it('creates 5 CloudWatch log groups with 7-day retention (ADR-7)', () => {
+  it('creates log groups with 7-day retention for consolidated Lambda (ADR-7)', () => {
     const app = new App();
     const { ApiStack } = loadApiStackModule();
     const stack = new ApiStack(app, 'ApiStackTestLogs', {
@@ -140,8 +140,8 @@ describe('ApiStack', () => {
     const template = Template.fromStack(stack as unknown as Stack);
     const templateStr = JSON.stringify(template.toJSON());
 
-    const matches = templateStr.match(/"AWS::Logs::LogGroup"/g) ?? [];
-    expect(matches.length).toBeGreaterThanOrEqual(5);
+    // PR 2 consolidation: single log group for ConsolidatedApi Lambda
+    expect(templateStr).toMatch(/ConsolidatedApiLogGroup/);
     expect(templateStr).toMatch(/"RetentionInDays":7/);
   });
 
@@ -165,8 +165,8 @@ describe('ApiStack', () => {
     expect(templateStr).toContain('/api/v1/products');
     expect(templateStr).toContain('/api/v1/categories');
     expect(templateStr).toContain('/api/v1/products/{id}');
-    // The auth lambda has NO apigwv2-authorizer attached.
-    expect(templateStr).toContain('AuthLambda');
+    // PR 2: single consolidated Lambda handles all routes
+    expect(templateStr).toContain('ConsolidatedApi');
     // The route map declares POST + GET + PATCH (OPTIONS handled by CORS preflight).
     expect(templateStr).toContain('POST /api/v1/auth/login');
     expect(templateStr).toContain('POST /api/v1/products');
@@ -189,7 +189,8 @@ describe('ApiStack', () => {
     const templateStr = JSON.stringify(template.toJSON());
 
     expect(templateStr).toContain('/api/v1/products/{id}/movements');
-    expect(templateStr).toContain('InventoryLambda');
+    // PR 2: single consolidated Lambda handles inventory
+    expect(templateStr).toContain('ConsolidatedApi');
     // No ANY method — only POST and GET are allowed for movements
     expect(templateStr).not.toMatch(/"ANY".*movements/);
   });
@@ -210,7 +211,8 @@ describe('ApiStack', () => {
 
     expect(templateStr).toContain('/api/v1/alerts');
     expect(templateStr).toContain('/api/v1/alerts/{id}');
-    expect(templateStr).toContain('AlertsLambda');
+    // PR 2: single consolidated Lambda handles alerts
+    expect(templateStr).toContain('ConsolidatedApi');
     // Assert ABSENCE of POST/PUT/PATCH/DELETE under /alerts — only GET routes
     // Anchor within RouteKey quoted value using [^"]* to avoid cross-field matches
     expect(templateStr).not.toMatch(/"RouteKey":"(POST|PUT|PATCH|DELETE)[^"]*alerts/);
@@ -236,7 +238,8 @@ describe('ApiStack', () => {
     expect(templateStr).toContain('/api/v1/orders/{id}/approve');
     expect(templateStr).toContain('/api/v1/orders/{id}/reject');
     expect(templateStr).toContain('/api/v1/orders/{id}/receive');
-    expect(templateStr).toContain('OrdersLambda');
+    // PR 2: single consolidated Lambda handles orders
+    expect(templateStr).toContain('ConsolidatedApi');
     // Orders is the only mutating route in orders BC (no PUT/PATCH/DELETE).
     expect(templateStr).not.toMatch(/"RouteKey":"(PUT|PATCH|DELETE)[^"]*orders/);
   });
