@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
         with:
           node-version: 20
           cache: pnpm
@@ -54,6 +55,7 @@ jobs:
             run: pnpm --filter infra exec cdk synth --all --no-color
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
         with:
           node-version: 20
           cache: pnpm
