@@ -38,6 +38,8 @@ jobs:
     timeout-minutes: 30
     environment:
       name: ${{ inputs.stage || 'dev' }}
+    env:
+      OIDC_ROLE_ARN: ${{ secrets.OIDC_ROLE_ARN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -63,8 +65,6 @@ jobs:
         with:
           role-to-assume: ${{ env.OIDC_ROLE_ARN }}
           aws-region: us-east-1
-        env:
-          OIDC_ROLE_ARN: ${{ secrets.OIDC_ROLE_ARN }}
 
       - name: Check OIDC role configured
         if: ${{ env.OIDC_ROLE_ARN == '' }}
