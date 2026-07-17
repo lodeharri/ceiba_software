@@ -190,7 +190,20 @@ export class FrontendStack extends Stack {
         cachedMethods: cf.CachedMethods.CACHE_GET_HEAD_OPTIONS,
         originRequestPolicy: apiOriginRequestPolicy,
         // Never cache authenticated endpoints — each user sees their own data.
-        cachePolicy: cf.CachePolicy.CACHING_DISABLED,
+        // Custom Cache Policy: pass Authorization header to origin. CachingDisabled
+        // (managed) does not forward Authorization by default, so we build a custom one.
+        // No caching because the backend returns per-user data.
+        cachePolicy: new cf.CachePolicy(this, 'ApiCachePolicy', {
+          cachePolicyName: `MercadoExpress-${stage}-ApiCachePolicy`,
+          defaultTtl: Duration.seconds(0),
+          minTtl: Duration.seconds(0),
+          maxTtl: Duration.seconds(0),
+          enableAcceptEncodingGzip: false,
+          enableAcceptEncodingBrotli: false,
+          cookieBehavior: cf.CacheCookieBehavior.none(),
+          queryStringBehavior: cf.CacheQueryStringBehavior.none(),
+          headerBehavior: cf.CacheHeaderBehavior.allowList('Authorization'),
+        }),
       },
     };
 
