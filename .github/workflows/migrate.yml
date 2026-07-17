@@ -66,6 +66,12 @@ jobs:
         env:
           OIDC_ROLE_ARN: ${{ secrets.OIDC_ROLE_ARN }}
 
+      - name: Check OIDC role configured
+        if: ${{ env.OIDC_ROLE_ARN == '' }}
+        run: |
+          echo "::error::OIDC_ROLE_ARN not configured in GitHub Environment '${{ inputs.stage || 'dev' }}' secrets. Configure it before running this workflow."
+          exit 1
+
       - name: Verify AWS credentials
         run: aws sts get-caller-identity
 
@@ -102,9 +108,16 @@ jobs:
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
 
+      - name: Check required secrets
+        if: ${{ secrets.ADMIN_PASSWORD == '' }}
+        run: |
+          echo "::error::ADMIN_PASSWORD not configured in GitHub Environment '${{ inputs.stage || 'dev' }}' secrets. Configure it before running the seed step."
+          exit 1
+
       - name: Run seed
         run: pnpm --filter @mercadoexpress/backend db:seed
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
+          ADMIN_USERNAME: ${{ vars.ADMIN_USERNAME || 'admin' }}
           ADMIN_EMAIL: ${{ vars.ADMIN_EMAIL || 'admin@mercadoexpress.local' }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
