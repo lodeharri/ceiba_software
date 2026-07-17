@@ -166,8 +166,10 @@ export class FrontendStack extends Stack {
     // them and the API returns 401 (FIX: F-006 CloudFront auth passthrough).
     const apiOriginRequestPolicy = new cf.OriginRequestPolicy(this, 'ApiOriginRequestPolicy', {
       originRequestPolicyName: `MercadoExpress-${stage}-ApiOriginRequestPolicy`,
+      // Authorization header is automatically forwarded when
+      // cachePolicy: CachingDisabled is set (CDK 2.113+ rejects it in
+      // allowList). Only forward the custom app headers explicitly.
       headerBehavior: cf.OriginRequestHeaderBehavior.allowList(
-        'Authorization',
         'Content-Type',
         'Idempotency-Key',
         'X-Request-Id',
