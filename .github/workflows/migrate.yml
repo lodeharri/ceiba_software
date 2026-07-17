@@ -108,8 +108,10 @@ jobs:
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
 
-      - name: Check required secrets
-        if: ${{ secrets.ADMIN_PASSWORD == '' }}
+      - name: Check ADMIN_PASSWORD configured
+        env:
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        if: ${{ env.ADMIN_PASSWORD == '' }}
         run: |
           echo "::error::ADMIN_PASSWORD not configured in GitHub Environment '${{ inputs.stage || 'dev' }}' secrets. Configure it before running the seed step."
           exit 1
