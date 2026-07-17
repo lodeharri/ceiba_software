@@ -87,8 +87,8 @@ importers:
   packages/backend:
     dependencies:
       '@asteasolutions/zod-to-openapi':
-        specifier: ^7.1.1
-        version: 7.3.4(zod@3.25.76)
+        specifier: ^9.0.0
+        version: 9.0.0(zod@3.25.76)
       '@mercadoexpress/shared':
         specifier: workspace:*
         version: link:../shared
@@ -252,8 +252,8 @@ importers:
   packages/shared:
     dependencies:
       '@asteasolutions/zod-to-openapi':
-        specifier: ^7.1.1
-        version: 7.3.4(zod@3.25.76)
+        specifier: ^9.0.0
+        version: 9.0.0(zod@3.25.76)
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -278,10 +278,10 @@ packages:
   '@asamuzakjp/css-color@3.2.0':
     resolution: {integrity: sha512-K1A6z8tS3XsmCMM86xoWdn7Fkdn9m6RSVtocUrJYIwZnFVkng/PvkEoWtOWmP+Scc6saYWHWZYbndEEXxl24jw==}
 
-  '@asteasolutions/zod-to-openapi@7.3.4':
-    resolution: {integrity: sha512-/2rThQ5zPi9OzVwes6U7lK1+Yvug0iXu25olp7S0XsYmOqnyMfxH7gdSQjn/+DSOHRg7wnotwGJSyL+fBKdnEA==}
+  '@asteasolutions/zod-to-openapi@9.0.0':
+    resolution: {integrity: sha512-/bI1+jCvTlkWzlBFH2wd9uADreYm9yQ34r7+iNV+ISLHMjtT1BFC/mxgv9UxTxRBNBZvpZ31Wr5qlzYyHA/YsA==}
     peerDependencies:
-      zod: ^3.20.2
+      zod: ^4.0.0
 
   '@aws-cdk/asset-awscli-v1@2.2.282':
     resolution: {integrity: sha512-7hKMi5tTxDcKGIMIOq14PnY0GBcugW33Uh/2YHDZiEwSxLeFOCYBwhR+BFXONb/EJeVI3RETFgailNZbkcKF6g==}
@@ -3739,7 +3739,7 @@ snapshots:
       '@csstools/css-tokenizer': 3.0.4
       lru-cache: 10.4.3
 
-  '@asteasolutions/zod-to-openapi@7.3.4(zod@3.25.76)':
+  '@asteasolutions/zod-to-openapi@9.0.0(zod@3.25.76)':
     dependencies:
       openapi3-ts: 4.6.0
       zod: 3.25.76
