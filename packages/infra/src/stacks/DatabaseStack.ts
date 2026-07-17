@@ -198,6 +198,8 @@ export class DatabaseStack extends Stack {
     // property in CDK; we publish the intent as a CFN tag instead so
     // the operational runbook can find it.
     Tags.of(database).add('ExtensionVector', 'pgvector');
+    // Temporary tag to force RDS recreation after manual deletion (drift remediation)
+    Tags.of(database).add('MigratedAt', '2026-07-17T18:30:00Z');
 
     // Admin bootstrap password — migrated from SSM String to Secrets Manager
     // with KMS-backed encryption. No plaintext value in SSM, no runtime SDK call.
