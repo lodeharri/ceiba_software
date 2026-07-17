@@ -96,7 +96,7 @@ jobs:
         id: secrets
         run: |
           RESULT=$(aws secretsmanager get-secret-value \
-            --secret-id MercadoExpress-dev-db-credentials-v2 \
+            --secret-id MercadoExpress-dev-admin-password \
             --query SecretString \
             --output text \
             --region us-east-1)
