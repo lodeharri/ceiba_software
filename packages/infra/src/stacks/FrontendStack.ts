@@ -161,6 +161,21 @@ export class FrontendStack extends Stack {
       originPath: '',
       protocolPolicy: cf.OriginProtocolPolicy.HTTPS_ONLY,
     });
+    // Custom Origin Request Policy: pass Authorization + other request
+    // headers to the API Gateway origin. Without this CloudFront strips
+    // them and the API returns 401 (FIX: F-006 CloudFront auth passthrough).
+    const apiOriginRequestPolicy = new cf.OriginRequestPolicy(this, 'ApiOriginRequestPolicy', {
+      originRequestPolicyName: `MercadoExpress-${stage}-ApiOriginRequestPolicy`,
+      headerBehavior: cf.OriginRequestHeaderBehavior.allowList(
+        'Authorization',
+        'Content-Type',
+        'Idempotency-Key',
+        'X-Request-Id',
+      ),
+      queryStringBehavior: cf.OriginRequestQueryStringBehavior.all(),
+      cookieBehavior: cf.OriginRequestCookieBehavior.none(),
+    });
+
     (
       distributionProps as cf.DistributionProps & {
         additionalBehaviors: Record<string, cf.BehaviorOptions>;
@@ -171,6 +186,9 @@ export class FrontendStack extends Stack {
         viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         allowedMethods: cf.AllowedMethods.ALLOW_ALL,
         cachedMethods: cf.CachedMethods.CACHE_GET_HEAD_OPTIONS,
+        originRequestPolicy: apiOriginRequestPolicy,
+        // Never cache authenticated endpoints — each user sees their own data.
+        cachePolicy: cf.CachePolicy.CACHING_DISABLED,
       },
     };
 
