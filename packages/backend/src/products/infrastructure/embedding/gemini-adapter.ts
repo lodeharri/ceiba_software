@@ -66,8 +66,16 @@ export class GeminiEmbeddingAdapter implements EmbeddingPort {
       throw new EmbeddingProviderUnavailableError('gemini', reason);
     }
     const json = (await res.json()) as { embedding: { values: number[] } };
-    this.log.info({ provider: 'gemini', statusCode: res.status });
-    return json.embedding.values;
+    const values = json.embedding.values;
+    if (!Array.isArray(values) || values.length !== 768) {
+      throw new EmbeddingProviderUnavailableError('gemini', 'invalid-dimension: expected 768');
+    }
+    this.log.info({
+      provider: 'gemini',
+      statusCode: res.status,
+      responseBytes: JSON.stringify(body).length,
+    });
+    return values;
   }
 
   private async withRetry<T>(fn: () => Promise<T>): Promise<T> {

@@ -69,4 +69,17 @@ describe('Embedding layer discipline', () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  it('products/application/ contains zero process.env references', () => {
+    const offenders: string[] = [];
+    for (const file of walkTs(APPLICATION_DIR)) {
+      const content = readFileSync(file, 'utf8');
+      if (content.includes('process.env')) {
+        offenders.push(
+          `${relative(REPO_ROOT, file)} uses process.env (env access is infrastructure-only)`,
+        );
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
 });

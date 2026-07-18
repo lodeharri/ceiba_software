@@ -41,7 +41,8 @@ export const handler = withRequestContext(
           }),
         };
       }
-      const useCase = getProductsBootstrap().getProduct;
+      const bootstrap = await getProductsBootstrap();
+      const useCase = bootstrap.getProduct;
       const product = await useCase.execute(id);
       return {
         statusCode: 200,

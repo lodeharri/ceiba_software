@@ -106,7 +106,8 @@ export const handler = withRequestContext(
       const token = extractBearer(event);
       await verifyJwt(token);
       const query = parseQuery(event.rawQueryString);
-      const useCase = getProductsBootstrap().listProducts;
+      const bootstrap = await getProductsBootstrap();
+      const useCase = bootstrap.listProducts;
       const filters: {
         categoryId?: string;
         supplier?: string;

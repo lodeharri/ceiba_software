@@ -126,7 +126,8 @@ export const handler = withRequestContext(
           throw zerr;
         }
       })();
-      const useCase = getProductsBootstrap().updateProduct;
+      const bootstrap = await getProductsBootstrap();
+      const useCase = bootstrap.updateProduct;
       const updated = await useCase.execute(id, input);
       return {
         statusCode: 200,

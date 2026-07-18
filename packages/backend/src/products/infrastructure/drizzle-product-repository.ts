@@ -116,7 +116,7 @@ export class DrizzleProductRepository implements ProductRepository {
     const notNullCondition = sql`${schema.products.embedding} IS NOT NULL`;
     const minSimilarityCondition =
       minSim > 0
-        ? sql`1 - (1 - (${schema.products.embedding} <=> ${embedding}::vector)) >= ${minSim}`
+        ? sql`(${schema.products.embedding} <=> ${embedding}::vector) <= ${1 - minSim}`
         : undefined;
 
     const whereClause = minSimilarityCondition
