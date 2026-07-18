@@ -36,7 +36,7 @@ jobs:
       # environment secrets (per runbook/oidc-bootstrap.md, PR 4).
       - name: Configure AWS credentials (OIDC)
         if: ${{ env.OIDC_ROLE_ARN != '' }}
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ env.OIDC_ROLE_ARN }}
           aws-region: us-east-1
@@ -70,7 +70,7 @@ jobs:
     steps:
       - name: Configure AWS credentials (OIDC)
         if: ${{ env.OIDC_ROLE_ARN != '' }}
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ env.OIDC_ROLE_ARN }}
           aws-region: us-east-1
