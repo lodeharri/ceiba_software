@@ -52,7 +52,7 @@ const LOCKS: readonly LockedDecision[] = [
   {
     name: 'Backend framework: pure AWS Lambda handlers (no Express/Fastify/NestJS/Koa)',
     source: 'openspec/config.yaml#stack.backend.framework',
-    paths: ['packages/backend/src', 'packages/backend/test', 'packages/backend/prisma'],
+    paths: ['packages/backend/src', 'packages/backend/test', 'packages/backend/drizzle'],
     skip: ['node_modules', 'dist'],
     forbidden: [
       { description: 'Express import', pattern: /from ['"]express['"]/ },
@@ -108,29 +108,27 @@ const LOCKS: readonly LockedDecision[] = [
     ],
   },
   {
-    name: 'Database ORM: Prisma only (no TypeORM/Sequelize/Mongoose/Knex/Drizzle)',
+    name: 'Database ORM: Drizzle only (no Prisma/TypeORM/Sequelize/Mongoose/Knex)',
     source: 'openspec/config.yaml#stack.database.orm',
-    paths: ['packages/backend/src', 'packages/backend/prisma'],
+    paths: ['packages/backend/src'],
     skip: ['node_modules', 'dist'],
     forbidden: [
+      { description: 'Prisma client import', pattern: /from ['"]@prisma\/client['"]/ },
       { description: 'TypeORM import', pattern: /from ['"]typeorm['"]/ },
       { description: 'Sequelize import', pattern: /from ['"]sequelize['"]/ },
       { description: 'Mongoose import', pattern: /from ['"]mongoose['"]/ },
       { description: 'Knex import', pattern: /from ['"]knex['"]/ },
-      { description: 'Drizzle import', pattern: /from ['"]drizzle-orm['"]/ },
     ],
   },
   {
-    name: 'Auth hashing: bcrypt only (no argon2/scrypt/bcryptjs)',
+    name: 'Auth hashing: bcryptjs only (no argon2/scrypt/bcrypt native)',
     source: 'openspec/config.yaml#auth.password_hash',
     paths: ['packages/backend/src'],
     skip: ['node_modules', 'dist'],
     forbidden: [
       { description: 'argon2 import', pattern: /from ['"]argon2['"]/ },
-      {
-        description: 'bcryptjs import (bcrypt native is the locked choice)',
-        pattern: /from ['"]bcryptjs['"]/,
-      },
+      { description: 'bcrypt native import', pattern: /from ['"]bcrypt['"]/ },
+      { description: 'scrypt-bcrypt import', pattern: /from ['"]scrypt-bcrypt['"]/ },
       // node:crypto is allowed for non-password primitives (HMAC, random) but
       // the script intentionally does not flag it — only specific password
       // hashing libraries are forbidden here.

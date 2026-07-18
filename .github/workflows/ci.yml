@@ -29,6 +29,21 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+  build:
+    name: build
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -w -r build
+
   verify:
     name: verify (${{ matrix.name }})
     needs: install
@@ -46,14 +61,10 @@ jobs:
             run: pnpm -w prettier --check .
           - name: test
             run: pnpm -w vitest run
-          - name: build
-            run: pnpm -w -r build
           - name: audit
             # PR 1 admits only moderate+low CVEs in production deps.
             # A `high` audit block is documented as a known issue for PR 4.
             run: pnpm audit --prod --audit-level=high
-          - name: cdk-synth
-            run: pnpm --filter infra exec cdk synth --all --no-color
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -64,3 +75,18 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: ${{ matrix.name }}
         run: ${{ matrix.run }}
+
+  cdk-synth:
+    name: cdk-synth
+    needs: [install, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter infra exec synth

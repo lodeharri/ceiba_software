@@ -854,7 +854,7 @@ ceiba_software/
 │   │   └── src/
 │   │       ├── db/
 │   │       │   ├── schema.ts     # DB models (users, products, categories,
-│   │       │   └── seed.ts       # stock_movements, alerts, purchase_orders)
+│   │       │   └── seed.ts       # admin user + 6 categories + 6 products (idempotent)
 │   │       ├── auth/             # Auth bounded context
 │   │       ├── products/         # Products + Categories BC (co-hosted)
 │   │       ├── inventory/        # Inventory BC (stock movements)

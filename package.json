@@ -6,8 +6,7 @@
   "description": "Inventory management system for a retail chain. Monorepo root.",
   "packageManager": "pnpm@9.15.4",
   "engines": {
-    "node": ">=20",
-    "pnpm": ">=9"
+    "node": ">=20"
   },
   "pnpm": {
     "overrides": {
