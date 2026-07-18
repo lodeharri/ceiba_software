@@ -28,7 +28,7 @@ jobs:
       name: prod
       url: https://<API_GATEWAY_URL>/api/v1/health
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           version: 9
