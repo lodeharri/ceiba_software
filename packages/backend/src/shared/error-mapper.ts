@@ -25,6 +25,7 @@
 import type { ErrorCodeValue as ErrorCode } from '@mercadoexpress/shared';
 import { BaseDomainError } from './errors/base-domain-error.js';
 import { InternalError } from './errors/typed-errors.js';
+import { EmbeddingProviderUnavailableError } from '../products/domain/errors/embedding-provider-unavailable.js';
 
 export interface ErrorEnvelope {
   code: ErrorCode;
@@ -65,6 +66,17 @@ function envelopeToResponse(envelope: ErrorEnvelope, statusCode: number): Mapped
  */
 export function toErrorResponse(thrown: unknown, ctx: MapperContext): MappedResponse {
   const requestId = ctx.requestId;
+  if (thrown instanceof EmbeddingProviderUnavailableError) {
+    const envelope: ErrorEnvelope = {
+      code: thrown.code,
+      message: thrown.message,
+      details: { provider: thrown.provider, reason: thrown.reason, retryAfter: 60 },
+      requestId,
+    };
+    ctx.log?.info({ requestId, code: thrown.code, httpStatus: 503 }, 'mapped embedding error');
+    return envelopeToResponse(envelope, 503);
+  }
+
   if (thrown instanceof BaseDomainError) {
     const envelope: ErrorEnvelope = {
       code: thrown.code,

@@ -25,6 +25,7 @@ interface DrizzleProductRow {
   stock: number;
   stockMin: number;
   supplier: string;
+  embedding?: number[] | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -104,6 +105,40 @@ export class DrizzleProductRepository implements ProductRepository {
       hasMore: page * size < (countRow?.count ?? 0),
     };
   }
+
+  async findByEmbedding(
+    embedding: number[],
+    opts: { limit: number; minSimilarity?: number },
+  ): Promise<ProductProps[]> {
+    const limit = Math.max(1, Math.min(50, opts.limit));
+    const minSim = opts.minSimilarity ?? 0.0;
+
+    const notNullCondition = sql`${schema.products.embedding} IS NOT NULL`;
+    const minSimilarityCondition =
+      minSim > 0
+        ? sql`1 - (1 - (${schema.products.embedding} <=> ${embedding}::vector)) >= ${minSim}`
+        : undefined;
+
+    const whereClause = minSimilarityCondition
+      ? and(notNullCondition, minSimilarityCondition)
+      : notNullCondition;
+
+    const rows = await this.db
+      .select()
+      .from(schema.products)
+      .where(whereClause)
+      .orderBy(sql`${schema.products.embedding} <=> ${embedding}::vector`)
+      .limit(limit);
+
+    return rows.map(toProps);
+  }
+
+  async updateEmbedding(id: string, embedding: number[]): Promise<void> {
+    await this.db
+      .update(schema.products)
+      .set({ embedding: sql`${embedding}::vector` })
+      .where(eq(schema.products.id, id));
+  }
 }
 
 function toProps(row: DrizzleProductRow): ProductProps {
@@ -121,6 +156,7 @@ function toProps(row: DrizzleProductRow): ProductProps {
     stock: row.stock,
     stockMin: row.stockMin,
     supplier: row.supplier,
+    embedding: row.embedding ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

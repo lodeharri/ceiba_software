@@ -16,10 +16,14 @@ import { ProductNotFoundError } from '../domain/errors/product-not-found.js';
 import type { ProductRepository } from '../domain/ports/product-repository.js';
 import type { CategoryReadRepository } from '../domain/ports/category-repository.js';
 import type { AlertReadModelPort } from '../domain/ports/alert-read-model-port.js';
+import type { EmbeddingPort } from '../domain/ports/embedding.js';
+import type { Logger as PinoLogger } from 'pino';
+import { embedInBackground } from './embed-in-background.js';
 
 export interface UpdateProductInput {
   name?: string;
   supplier?: string;
+  description?: string | null;
   price?: number;
   stockMin?: number;
   categoryId?: string;
@@ -30,6 +34,8 @@ export class UpdateProductUseCase {
     private readonly products: ProductRepository,
     private readonly categories: CategoryReadRepository,
     private readonly alertReadModel: AlertReadModelPort,
+    private readonly embedder?: EmbeddingPort,
+    private readonly logger?: PinoLogger,
   ) {}
 
   async execute(id: string, input: UpdateProductInput): Promise<Product> {
@@ -44,6 +50,22 @@ export class UpdateProductUseCase {
     const updated = await this.products.update(id, input);
     const product = Product.rehydrate(updated);
     const hasActiveAlert = await this.alertReadModel.hasActiveAlert(id);
+
+    // Requirement 8: re-embed ONLY when text fields (name, description, supplier) change.
+    // Detect by presence (field !== undefined), not by value change.
+    const shouldReembed =
+      input.name !== undefined || input.description !== undefined || input.supplier !== undefined;
+    if (shouldReembed && this.embedder) {
+      const log =
+        this.logger ??
+        ({
+          warn: (_meta: object, _msg: string) => {
+            /* no-op when no logger injected */
+          },
+        } as PinoLogger);
+      setImmediate(() => embedInBackground(product, this.embedder!, this.products, log));
+    }
+
     return product.withAlertFlag(hasActiveAlert);
   }
 }

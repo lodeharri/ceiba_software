@@ -27,26 +27,53 @@ export interface MandatoryFields {
 
 const isLambda = !!process.env['AWS_LAMBDA_FUNCTION_NAME'];
 
-export function createLogger(): PinoLogger {
-  return pino({
-    level: process.env['LOG_LEVEL'] ?? 'info',
+export function createLogger(
+  options?: { level?: string },
+  destination?: NodeJS.WritableStream,
+): PinoLogger {
+  const pinoOpts = {
+    level: options?.level ?? process.env['LOG_LEVEL'] ?? 'info',
     // In Lambda we cannot pretty-print; the CloudWatch Logs agent
     // already groups by line. Outside Lambda (vitest, scripts) we
     // fall back to a human-readable transport.
-    ...(isLambda
+    // Note: when a destination is passed (e.g. test harness), we skip
+    // the transport to avoid pino's transport+destination conflict.
+    ...(destination
       ? {}
-      : {
-          transport: {
-            target: 'pino/file',
-            options: { destination: 1 }, // stdout
-          },
-        }),
+      : isLambda
+        ? {}
+        : {
+            transport: {
+              target: 'pino/file',
+              options: { destination: 1 }, // stdout
+            },
+          }),
+    // API key redaction — prevents Gemini/SSM keys from appearing in CloudWatch
+    redact: {
+      paths: [
+        '*.apiKey',
+        '*.GEMINI_API_KEY',
+        '*.gemini_api_key',
+        'context.apiKey',
+        'context.embedder.apiKey',
+        'nested.apiKey',
+        'nested.GEMINI_API_KEY',
+        'apiKey',
+        'GEMINI_API_KEY',
+      ],
+      censor: '[REDACTED]',
+    },
     base: {
       service: 'mercadoexpress-backend',
       stage: process.env['STAGE'] ?? 'dev',
     },
     timestamp: pino.stdTimeFunctions.isoTime,
-  });
+  };
+
+  if (destination) {
+    return pino(pinoOpts, destination);
+  }
+  return pino(pinoOpts);
 }
 
 /**

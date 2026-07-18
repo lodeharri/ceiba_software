@@ -55,6 +55,10 @@ function makeProducts(
       const slice = items.slice(start, start + size);
       return { items: slice, page, size, total, hasMore: start + size < total };
     },
+    async findByEmbedding(_embedding, _opts) {
+      return [];
+    },
+    async updateEmbedding(_id, _embedding) {},
   };
 }
 
