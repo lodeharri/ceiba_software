@@ -48,7 +48,17 @@ import { users, categories, products } from './schema.js';
 
 const BCRYPT_COST = Number(process.env['BCRYPT_COST'] ?? 10);
 
-const REQUIRED_ENV_VARS = ['ADMIN_USERNAME', 'ADMIN_EMAIL', 'ADMIN_PASSWORD'] as const;
+/**
+ * Read a required env var or throw with an explicit message.
+ * Centralizes the validation so callers never need non-null assertions.
+ */
+function requireEnv(name: string): string {
+  const v = process.env[name];
+  if (typeof v !== 'string' || v.length === 0) {
+    throw new Error(`Missing required env var: ${name}`);
+  }
+  return v;
+}
 
 const REFERENCE_CATEGORIES = [
   'Bebidas',
@@ -126,26 +136,36 @@ const REFERENCE_PRODUCTS: ReferenceProduct[] = [
   },
 ];
 
+/**
+ * Seeds the database with an admin user + 6 reference categories + 6 reference products.
+ *
+ * All writes are wrapped in a single `db.transaction(...)` so the operation is
+ * atomic: either all rows land or none does. Idempotency is guaranteed by
+ * `onConflictDoUpdate` against stable keys (`username`, `name`, `sku`),
+ * which makes the seed safe to re-run.
+ *
+ * Required env vars: ADMIN_USERNAME, ADMIN_EMAIL, ADMIN_PASSWORD.
+ * Optional env var: BCRYPT_COST (default 10).
+ *
+ * @throws if any required env var is missing or empty.
+ * @throws if `bcrypt.hash` rejects (e.g. invalid BCRYPT_COST).
+ * @throws if the DB transaction fails (connection, constraint, etc.).
+ *   Callers should treat any thrown error as a non-recoverable seed failure.
+ */
 export async function runSeed(): Promise<{
   user: { username: string; role: string };
   categories: number;
   products: number;
 }> {
-  for (const name of REQUIRED_ENV_VARS) {
-    if (!process.env[name] || process.env[name]!.length === 0) {
-      throw new Error(`Missing required env var: ${name}`);
-    }
-  }
+  const username = requireEnv('ADMIN_USERNAME');
+  const email = requireEnv('ADMIN_EMAIL').toLowerCase();
+  const password = requireEnv('ADMIN_PASSWORD');
 
   const db = getDb();
-
-  const username = process.env['ADMIN_USERNAME']!;
-  const email = process.env['ADMIN_EMAIL']!.toLowerCase();
-  const password = process.env['ADMIN_PASSWORD']!;
   const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
 
   // All writes in one atomic transaction.
-  const userId = await db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     // 1. Admin user — upsert on username (BR-D5 idempotency rule).
     await tx
       .insert(users)
@@ -161,12 +181,6 @@ export async function runSeed(): Promise<{
         set: { email, passwordHash, role: 'admin' },
       });
 
-    const [adminRow] = await tx
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.username, username))
-      .limit(1);
-
     // 2. Six reference categories — upsert on name.
     for (const name of REFERENCE_CATEGORIES) {
       await tx.insert(categories).values({ id: randomUUID(), name }).onConflictDoUpdate({
@@ -176,7 +190,6 @@ export async function runSeed(): Promise<{
     }
 
     // 3. Six reference products — upsert on sku (requires category id).
-    let productCount = 0;
     for (const p of REFERENCE_PRODUCTS) {
       const [category] = await tx
         .select({ id: categories.id })
@@ -213,14 +226,8 @@ export async function runSeed(): Promise<{
             supplier: p.supplier,
           },
         });
-
-      productCount += 1;
     }
-
-    return adminRow!.id;
   });
-
-  void userId; // consumed for future use; return shape is stable
 
   return {
     user: { username, role: 'admin' },
