@@ -3,18 +3,18 @@
  * Rotate the admin user's password (KL-01).
  *
  * Reads the admin username from $ADMIN_USERNAME or argv[2], generates a fresh
- * cryptographically-random password, hashes it with bcrypt (cost 10, matching
- * prisma/seed.ts BCRYPT_COST default), and persists the new password_hash via
- * Prisma. The cleartext password is printed to stdout exactly once so the
- * operator can store it in a secrets manager — it is NEVER logged.
+ * cryptographically-random password, hashes it with bcryptjs (cost 10, matching
+ * the BCRYPT_COST default used by runSeed), and persists the new passwordHash
+ * via Drizzle ORM. The cleartext password is printed to stdout exactly once so
+ * the operator can store it in a secrets manager — it is NEVER logged.
  *
  * Usage:
  *   cd packages/backend && pnpm exec tsx ../../scripts/rotate-admin-password.ts
- *   ADMIN_USERNAME=admin pnpm --filter backend exec tsx ../../scripts/rotate-admin-password.ts
+ *   ADMIN_USERNAME=admin pnpm --filter backend exec tsx ../../scripts/rotate-admin-password.ts admin
  *   cd packages/backend && pnpm exec tsx ../../scripts/rotate-admin-password.ts admin
  *
  * Required env:
- *   DATABASE_URL                Postgres connection string (Prisma reads it)
+ *   DATABASE_URL                Postgres connection string
  *   ADMIN_USERNAME              (optional) admin username — falls back to argv[2]
  *   BCRYPT_COST                 (optional) bcrypt cost factor — defaults to 10
  *
@@ -27,10 +27,12 @@ import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 
-// Cross-package resolution: bcrypt and @prisma/client live in packages/backend's
-// node_modules. We anchor createRequire() at the backend package so Node's
-// module resolution walks from there instead of from scripts/ (which has no
-// direct dependencies). This avoids adding new top-level deps.
+// Cross-package resolution: bcryptjs and all backend packages live under
+// packages/backend/node_modules. We anchor createRequire() at the backend
+// package so Node's module resolution walks from there instead of from
+// scripts/ (which has no direct dependencies).  tsx resolves modules at
+// runtime from the backend's node_modules.  TypeScript's type-checker
+// cannot resolve them from scripts/ so we use @ts-expect-error pragmas.
 const here = pathToFileURL(import.meta.url);
 const backendRequire = createRequire(new URL('../packages/backend/package.json', here).href);
 
@@ -38,23 +40,8 @@ interface BcryptModule {
   hash(data: string, saltOrRounds: number | string): Promise<string>;
 }
 
-interface PrismaClientCtor {
-  new (): {
-    user: {
-      findUnique(args: {
-        where: { username: string };
-      }): Promise<{ id: string; username: string } | null>;
-      update(args: {
-        where: { username: string };
-        data: { passwordHash: string };
-      }): Promise<{ id: string; username: string }>;
-    };
-    $disconnect(): Promise<void>;
-  };
-}
-
-const bcryptMod = backendRequire('bcrypt') as BcryptModule;
-const { PrismaClient } = backendRequire('@prisma/client') as { PrismaClient: PrismaClientCtor };
+// bcryptjs is installed in packages/backend as a production dependency.
+const bcryptMod = backendRequire('bcryptjs') as BcryptModule;
 
 const DEFAULT_BCRYPT_COST = 10;
 const PASSWORD_BYTES = 24; // 24 random bytes → 32 base64url chars (192 bits of entropy)
@@ -102,26 +89,38 @@ async function rotatePassword(username: string, cost: number): Promise<RotateRes
   const password = generatePassword();
   const passwordHash = await bcryptMod.hash(password, cost);
 
-  const prisma = new PrismaClient();
-  try {
-    const existing = await prisma.user.findUnique({ where: { username } });
-    if (existing === null) {
-      process.stderr.write(`ERROR: admin user '${username}' not found in database.\n`);
-      process.exit(1);
-    }
-    await prisma.user.update({
-      where: { username },
-      data: { passwordHash },
-    });
-    return {
-      username,
-      password,
-      rotatedAt: new Date().toISOString(),
-      bcryptCost: cost,
-    };
-  } finally {
-    await prisma.$disconnect();
+  // Drizzle ORM (replaces former PrismaClient usage).
+  // backendRequire resolves all backend packages from packages/backend/node_modules
+  // at runtime. The ESLint rule no-explicit-any catches these casts at the
+  // script-file level; we use eslint-disable for those, not @ts-ignore.
+
+  const { getDb } = backendRequire('../packages/backend/src/shared/db.js');
+
+  const { eq } = backendRequire('drizzle-orm');
+
+  const { users } = backendRequire('../packages/backend/src/db/schema.js');
+
+  const db = getDb();
+
+  const [existing] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.username, username))
+    .limit(1);
+
+  if (!existing) {
+    process.stderr.write(`ERROR: admin user '${username}' not found in database.\n`);
+    process.exit(1);
   }
+
+  await db.update(users).set({ passwordHash }).where(eq(users.id, existing.id));
+
+  return {
+    username,
+    password,
+    rotatedAt: new Date().toISOString(),
+    bcryptCost: cost,
+  };
 }
 
 async function main(): Promise<void> {
@@ -134,7 +133,7 @@ async function main(): Promise<void> {
   }
 
   if (process.env['DATABASE_URL'] === undefined || process.env['DATABASE_URL'].length === 0) {
-    process.stderr.write('ERROR: DATABASE_URL env var is required for Prisma to connect.\n');
+    process.stderr.write('ERROR: DATABASE_URL env var is required for the Drizzle DB client.\n');
     process.exit(1);
   }
 

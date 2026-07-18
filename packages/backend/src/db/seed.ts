@@ -11,12 +11,21 @@
  *
  * bcrypt cost 10 (D6). Exits non-zero if a required env var is missing
  * so the setup marks failure rather than silently seeding a partial dataset.
+ *
+ * All write operations (admin + categories + products) are wrapped in a single
+ * `db.transaction(...)` call so they are atomic: either all succeed or none
+ * is persisted. This also makes the seed idempotent at the transaction level —
+ * a second run produces the same end-state without duplicates.
+ *
+ * Upsert logic uses Drizzle's `onConflictDoUpdate` to avoid a select-then-
+ * insert/update race between concurrent seed invocations.
  */
 
 import { existsSync } from 'node:fs';
 import { config as loadDotenv } from 'dotenv';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 
 const __filename = import.meta.url ? fileURLToPath(import.meta.url) : process.argv[1]!;
 const seedFile = dirname(__filename);
@@ -33,7 +42,9 @@ if (existsSync(`${workspaceRoot}/.env.dev`)) {
 }
 
 import bcrypt from 'bcryptjs';
+import { eq } from 'drizzle-orm';
 import { getDb } from '../shared/db.js';
+import { users, categories, products } from './schema.js';
 
 const BCRYPT_COST = Number(process.env['BCRYPT_COST'] ?? 10);
 
@@ -131,33 +142,12 @@ export async function runSeed(): Promise<{
   const username = process.env['ADMIN_USERNAME']!;
   const email = process.env['ADMIN_EMAIL']!.toLowerCase();
   const password = process.env['ADMIN_PASSWORD']!;
-
-  // 1. Admin user — upsert on username (BR-D5 idempotency rule).
   const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
 
-  // Try insert first; if user exists, update
-  const { eq } = await import('drizzle-orm');
-  const { users } = await import('./schema.js');
-
-  // Check if user exists
-  const [existing] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.username, username))
-    .limit(1);
-
-  let userId: string;
-  if (existing) {
-    // Update
-    await db
-      .update(users)
-      .set({ email, passwordHash, role: 'admin' })
-      .where(eq(users.id, existing.id));
-    userId = existing.id;
-  } else {
-    // Insert
-    const { randomUUID } = await import('node:crypto');
-    const [inserted] = await db
+  // All writes in one atomic transaction.
+  const userId = await db.transaction(async (tx) => {
+    // 1. Admin user — upsert on username (BR-D5 idempotency rule).
+    await tx
       .insert(users)
       .values({
         id: randomUUID(),
@@ -166,49 +156,45 @@ export async function runSeed(): Promise<{
         passwordHash,
         role: 'admin',
       })
-      .returning({ id: users.id });
-    userId = inserted!.id;
-  }
+      .onConflictDoUpdate({
+        target: users.username,
+        set: { email, passwordHash, role: 'admin' },
+      });
 
-  // 2. Six reference categories — upsert on name.
-  const { categories } = await import('./schema.js');
-  for (const name of REFERENCE_CATEGORIES) {
-    const [existingCat] = await db
-      .select({ id: categories.id })
-      .from(categories)
-      .where(eq(categories.name, name))
+    const [adminRow] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.username, username))
       .limit(1);
-    if (!existingCat) {
-      const { randomUUID } = await import('node:crypto');
-      await db.insert(categories).values({ id: randomUUID(), name });
-    }
-  }
 
-  // 3. Six reference products — upsert on sku (requires category id).
-  let productCount = 0;
-  const { products } = await import('./schema.js');
-  for (const p of REFERENCE_PRODUCTS) {
-    const [category] = await db
-      .select({ id: categories.id })
-      .from(categories)
-      .where(eq(categories.name, p.categoryName))
-      .limit(1);
-    if (!category) {
-      throw new Error(
-        `Seed invariant violated: category '${p.categoryName}' missing after categories upsert.`,
-      );
+    // 2. Six reference categories — upsert on name.
+    for (const name of REFERENCE_CATEGORIES) {
+      await tx.insert(categories).values({ id: randomUUID(), name }).onConflictDoUpdate({
+        target: categories.name,
+        set: { name },
+      });
     }
 
-    const [existingProd] = await db
-      .select({ id: products.id })
-      .from(products)
-      .where(eq(products.sku, p.sku))
-      .limit(1);
+    // 3. Six reference products — upsert on sku (requires category id).
+    let productCount = 0;
+    for (const p of REFERENCE_PRODUCTS) {
+      const [category] = await tx
+        .select({ id: categories.id })
+        .from(categories)
+        .where(eq(categories.name, p.categoryName))
+        .limit(1);
 
-    if (existingProd) {
-      await db
-        .update(products)
-        .set({
+      if (!category) {
+        throw new Error(
+          `Seed invariant violated: category '${p.categoryName}' missing after categories upsert.`,
+        );
+      }
+
+      await tx
+        .insert(products)
+        .values({
+          id: randomUUID(),
+          sku: p.sku,
           name: p.name,
           categoryId: category.id,
           price: String(p.price),
@@ -216,27 +202,30 @@ export async function runSeed(): Promise<{
           stockMin: p.stockMin,
           supplier: p.supplier,
         })
-        .where(eq(products.id, existingProd.id));
-    } else {
-      const { randomUUID } = await import('node:crypto');
-      await db.insert(products).values({
-        id: randomUUID(),
-        sku: p.sku,
-        name: p.name,
-        categoryId: category.id,
-        price: String(p.price),
-        stock: p.stock,
-        stockMin: p.stockMin,
-        supplier: p.supplier,
-      });
+        .onConflictDoUpdate({
+          target: products.sku,
+          set: {
+            name: p.name,
+            categoryId: category.id,
+            price: String(p.price),
+            stock: p.stock,
+            stockMin: p.stockMin,
+            supplier: p.supplier,
+          },
+        });
+
+      productCount += 1;
     }
-    productCount += 1;
-  }
+
+    return adminRow!.id;
+  });
+
+  void userId; // consumed for future use; return shape is stable
 
   return {
     user: { username, role: 'admin' },
     categories: REFERENCE_CATEGORIES.length,
-    products: productCount,
+    products: REFERENCE_PRODUCTS.length,
   };
 }
 
