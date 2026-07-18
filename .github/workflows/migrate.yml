@@ -41,7 +41,7 @@ jobs:
     env:
       OIDC_ROLE_ARN: ${{ secrets.OIDC_ROLE_ARN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
 
