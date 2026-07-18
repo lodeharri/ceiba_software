@@ -38,6 +38,7 @@ import {
   Fn,
   RemovalPolicy,
   SecretValue,
+  Aws,
 } from 'aws-cdk-lib';
 import type { Construct } from 'constructs';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
@@ -146,6 +147,7 @@ export const LAMBDAS: readonly LambdaSpec[] = [
       { path: '/api/v1/auth/login', methods: [apigwv2.HttpMethod.POST] },
       // Products + Categories
       { path: '/api/v1/products', methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.GET] },
+      { path: '/api/v1/products/semantic-search', methods: [apigwv2.HttpMethod.POST] },
       {
         path: '/api/v1/products/{id}',
         methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.PATCH],
@@ -315,6 +317,7 @@ export class ApiStack extends Stack {
         TRUSTED_PROXY_DEPTH: '0',
         LOG_LEVEL: 'info',
         BCRYPT_COST: '10',
+        EMBEDDING_PROVIDER: 'gemini',
       },
       ...(reservedConcurrency !== undefined
         ? { reservedConcurrentExecutions: reservedConcurrency }
@@ -341,6 +344,17 @@ export class ApiStack extends Stack {
         }),
       );
     }
+
+    // SSM GetParameter for Gemini API key (semantic search).
+    consolidatedFn.role!.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['ssm:GetParameter'],
+        resources: [
+          `arn:aws:ssm:${Aws.REGION}:${Aws.ACCOUNT_ID}:parameter/ceiba/${stage}/gemini-api-key`,
+        ],
+      }),
+    );
 
     // ── Routes — all paths go to the single Lambda ─────────────────────────────
 

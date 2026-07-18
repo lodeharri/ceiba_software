@@ -31,6 +31,7 @@ import type { Construct } from 'constructs';
 import * as rds from 'aws-cdk-lib/aws-rds';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { type Stage, infraConfig } from '../config.js';
 // MigrationsCustomResource removed — migrations now run in GitHub Actions CI (migrate.yml).
 
@@ -287,6 +288,15 @@ export class DatabaseStack extends Stack {
         description: `Isolated subnet ID ${i} for ApiStack Lambda VPC placement`,
         exportName: `MercadoExpress-${stage}-IsolatedSubnetId${i}`,
       });
+    });
+
+    // SSM SecureString for Gemini API key (product semantic search).
+    new ssm.StringParameter(this, 'GeminiApiKey', {
+      parameterName: `/ceiba/${stage}/gemini-api-key`,
+      stringValue: 'PLACEHOLDER_REPLACE_AT_DEPLOY',
+      type: ssm.ParameterType.SECURE_STRING,
+      description: `MercadoExpress ${stage} Gemini API key for product semantic search`,
+      tier: ssm.ParameterTier.STANDARD,
     });
 
     // Migrations run in GitHub Actions CI (.github/workflows/migrate.yml).
