@@ -16,6 +16,9 @@ export interface BuildProviderSettings {
   httpClient?: typeof fetch;
 }
 
+/** Module-level singleton cache — per provider name, per spec R3 Scenario 3.4 */
+const cache = new Map<string, EmbeddingPort>();
+
 /**
  * Build an EmbeddingPort for the given provider.
  * Selects the concrete adapter by env-controlled `EMBEDDING_PROVIDER`.
@@ -24,16 +27,21 @@ export interface BuildProviderSettings {
  * Adding a new provider: add a `case` here + a new adapter file. Nothing else.
  */
 export function buildEmbeddingProvider(settings: BuildProviderSettings): EmbeddingPort {
+  const cached = cache.get(settings.provider);
+  if (cached) return cached;
+
   switch (settings.provider) {
     case 'gemini': {
       if (!settings.apiKey) {
         throw new EmbeddingProviderUnavailableError('gemini', 'missing-api-key');
       }
-      return new GeminiEmbeddingAdapter({
+      const adapter = new GeminiEmbeddingAdapter({
         apiKey: settings.apiKey,
         logger: settings.logger,
         ...(settings.httpClient ? { httpClient: settings.httpClient } : {}),
       });
+      cache.set(settings.provider, adapter);
+      return adapter;
     }
     default:
       throw new EmbeddingProviderUnavailableError(settings.provider, 'unknown-provider');

@@ -53,8 +53,10 @@ export class GeminiEmbeddingAdapter implements EmbeddingPort {
   private async callGemini(text: string): Promise<readonly number[]> {
     const url = `${GEMINI_EMBEDDING_URL}?key=${this.deps.apiKey}`;
     const body = JSON.stringify({
+      model: 'models/gemini-embedding-001',
       content: { parts: [{ text }] },
-      taskType: 'RETRIEVAL_DOCUMENT',
+      task_type: 'RETRIEVAL_DOCUMENT',
+      output_dimensionality: 768,
     });
     const res = await this.http(url, {
       method: 'POST',
@@ -62,10 +64,18 @@ export class GeminiEmbeddingAdapter implements EmbeddingPort {
       body,
     });
     if (!res.ok) {
-      const reason = `HTTP ${res.status}`;
-      throw new EmbeddingProviderUnavailableError('gemini', reason);
+      throw new EmbeddingProviderUnavailableError('gemini', `HTTP ${res.status}`);
     }
-    const json = (await res.json()) as { embedding: { values: number[] } };
+    const responseText = await res.text();
+    let json: { embedding: { values: number[] } };
+    try {
+      json = JSON.parse(responseText) as { embedding: { values: number[] } };
+    } catch (parseErr) {
+      throw new EmbeddingProviderUnavailableError(
+        'gemini',
+        `invalid-response-json: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`,
+      );
+    }
     const values = json.embedding.values;
     if (!Array.isArray(values) || values.length !== 768) {
       throw new EmbeddingProviderUnavailableError('gemini', 'invalid-dimension: expected 768');
@@ -73,7 +83,7 @@ export class GeminiEmbeddingAdapter implements EmbeddingPort {
     this.log.info({
       provider: 'gemini',
       statusCode: res.status,
-      responseBytes: JSON.stringify(body).length,
+      responseBytes: responseText.length,
     });
     return values;
   }

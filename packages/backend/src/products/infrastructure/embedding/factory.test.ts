@@ -75,9 +75,9 @@ describe('buildEmbeddingProvider', () => {
     expect(typeof port.embedBatch).toBe('function');
   });
 
-  // ── TRIANGULATE Step 2: Second call constructs a NEW adapter (no singleton by design) ─
+  // ── TRIANGULATE Step 2: Same provider returns identical instance (singleton per spec R3 Scenario 3.4) ─
 
-  it('second call with same provider constructs a new adapter instance', () => {
+  it('same provider returns identical instance (singleton per spec R3 Scenario 3.4)', () => {
     const fakeFetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -86,24 +86,21 @@ describe('buildEmbeddingProvider', () => {
       },
     } as unknown as Response);
 
-    const result1 = buildEmbeddingProvider({
+    const r1 = buildEmbeddingProvider({
       provider: 'gemini',
       apiKey: 'sk-test',
       logger: stubLogger,
       httpClient: fakeFetch,
     });
-    const result2 = buildEmbeddingProvider({
+    const r2 = buildEmbeddingProvider({
       provider: 'gemini',
       apiKey: 'sk-test',
       logger: stubLogger,
       httpClient: fakeFetch,
     });
 
-    // No singleton — two calls produce two distinct instances.
-    // Reuse across invocations is the bootstrap's responsibility, not the factory's.
-    expect(result1).not.toBe(result2);
-    expect(result1).toBeDefined();
-    expect(result2).toBeDefined();
+    // Singleton: two calls return the same reference.
+    expect(r1).toBe(r2);
   });
 
   // ── TRIANGULATE Step 3: Each call constructs a new adapter (one per call) ─
@@ -148,6 +145,7 @@ describe('buildEmbeddingProvider', () => {
       httpClient: fakeFetch,
     });
 
-    expect(constructionCount).toBe(2);
+    // Singleton: constructor is called only once (first call), cached thereafter.
+    expect(constructionCount).toBe(1);
   });
 });

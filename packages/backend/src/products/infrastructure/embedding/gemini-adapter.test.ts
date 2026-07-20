@@ -21,6 +21,9 @@ function makeHttpClient(responses: FakeResponse[]) {
       async json() {
         return r.body;
       },
+      async text() {
+        return JSON.stringify(r.body);
+      },
     };
   });
 }
@@ -218,5 +221,38 @@ describe('GeminiEmbeddingAdapter', () => {
     for (const call of allLogCalls) {
       expect(JSON.stringify(call)).not.toContain('sk-gemini-secret-xyz');
     }
+  });
+
+  // ── Body shape verification (API contract: model field + snake_case task_type) ─
+
+  it('sends correct body shape: model field + task_type snake_case', async () => {
+    const httpClient = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      async json() {
+        return { embedding: { values: Array(768).fill(0.1) } };
+      },
+      async text() {
+        return JSON.stringify({ embedding: { values: Array(768).fill(0.1) } });
+      },
+    });
+    const adapter = makeAdapter(httpClient as ReturnType<typeof makeHttpClient>);
+    await adapter.embed('test');
+
+    const callArgs = httpClient.mock.calls[0] as [string, RequestInit?];
+    const bodyStr = callArgs[1]?.body as string;
+    expect(bodyStr).toBeDefined();
+    let body: Record<string, unknown>;
+    try {
+      body = JSON.parse(bodyStr!) as Record<string, unknown>;
+    } catch {
+      expect.fail('body is not valid JSON');
+      return;
+    }
+    expect(body.model).toBe('models/gemini-embedding-001');
+    expect(body.task_type).toBe('RETRIEVAL_DOCUMENT');
+    expect(body).not.toHaveProperty('taskType');
+    expect(body.content).toBeDefined();
+    expect((body.content as Record<string, unknown>).parts).toBeDefined();
   });
 });
