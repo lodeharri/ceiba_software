@@ -109,7 +109,8 @@ export const handler = withRequestContext(
           throw zerr;
         }
       })();
-      const useCase = getProductsBootstrap().createProduct;
+      const bootstrap = await getProductsBootstrap();
+      const useCase = bootstrap.createProduct;
       const created = await useCase.execute(body);
       return {
         statusCode: 201,

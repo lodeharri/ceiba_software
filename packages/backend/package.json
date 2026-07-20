@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^7.1.1",
+    "@aws-sdk/client-ssm": "^3.1090.0",
     "@mercadoexpress/shared": "workspace:*",
     "@types/pg": "^8.20.0",
     "bcryptjs": "^2.4.3",

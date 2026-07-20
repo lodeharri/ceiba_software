@@ -53,4 +53,13 @@ export interface ProductRepository {
     partial: Partial<Omit<ProductProps, 'id' | 'sku' | 'stock' | 'createdAt'>>,
   ): Promise<ProductProps>;
   list(opts: ListOptions): Promise<Page<ProductProps>>;
+
+  // Semantic search: cosine similarity via pgvector HNSW index
+  findByEmbedding(
+    embedding: number[],
+    opts: { limit: number; minSimilarity?: number },
+  ): Promise<ProductProps[]>;
+
+  // Background path: update embedding after async computation
+  updateEmbedding(id: string, embedding: number[]): Promise<void>;
 }

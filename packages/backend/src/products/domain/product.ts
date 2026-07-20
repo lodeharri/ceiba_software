@@ -34,6 +34,10 @@ export interface ProductProps {
   stock: number;
   stockMin: number;
   supplier: string;
+  /** Product description — used in semantic search embedding text. */
+  description?: string | null;
+  /** Semantic search embedding — populated asynchronously via Gemini. */
+  embedding?: number[] | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -126,6 +130,9 @@ export class Product {
   get supplier(): string {
     return this.props.supplier;
   }
+  get description(): string | null | undefined {
+    return this.props.description;
+  }
   get createdAt(): Date | undefined {
     return this.props.createdAt;
   }
@@ -144,6 +151,7 @@ export class Product {
     supplier: string;
     categoryId: string;
     hasActiveAlert: boolean;
+    description: string | null;
     createdAt: string;
     updatedAt: string;
   } {
@@ -163,6 +171,7 @@ export class Product {
       // `false` for aggregates produced by `Product.create` /
       // `Product.rehydrate` without an explicit `withAlertFlag(...)` call.
       hasActiveAlert: this.alertFlag,
+      description: this.props.description ?? null,
       createdAt: (this.props.createdAt ?? new Date(0)).toISOString(),
       updatedAt: (this.props.updatedAt ?? new Date(0)).toISOString(),
     };

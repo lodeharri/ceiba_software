@@ -45,6 +45,10 @@ function makeRepos(opts: { existing?: ProductProps; hasCategory?: boolean } = {}
     async list() {
       return { items: [], page: 1, size: 20, total: 0, hasMore: false };
     },
+    async findByEmbedding(_embedding, _opts) {
+      return [];
+    },
+    async updateEmbedding(_id, _embedding) {},
   };
   const categories: CategoryReadRepository = {
     async findById(id) {

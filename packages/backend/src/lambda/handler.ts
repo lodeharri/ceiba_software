@@ -32,6 +32,7 @@ import { handler as authLogin } from '../auth/interface/handlers/login.js';
 // Products + Categories
 import { handler as createProduct } from '../products/interface/handlers/create-product.js';
 import { handler as listProducts } from '../products/interface/handlers/list-products.js';
+import { handler as semanticSearchProducts } from '../products/interface/handlers/semantic-search-products.js';
 import { handler as getProduct } from '../products/interface/handlers/get-product.js';
 import { handler as updateProduct } from '../products/interface/handlers/update-product.js';
 import { handler as listCategories } from '../categories/interface/handlers/list-categories.js';
@@ -72,6 +73,7 @@ const ROUTE_MAP: Record<string, SubHandler> = {
   'GET /api/v1/products': listProducts as SubHandler,
   'GET /api/v1/products/{id}': getProduct as SubHandler,
   'PATCH /api/v1/products/{id}': updateProduct as SubHandler,
+  'POST /api/v1/products/semantic-search': semanticSearchProducts as SubHandler,
   'GET /api/v1/categories': listCategories as SubHandler,
   'POST /api/v1/categories': createCategory as SubHandler,
 

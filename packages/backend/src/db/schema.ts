@@ -34,7 +34,18 @@ export const orderStatusEnum = pgEnum('order_status', [
   'RECIBIDA',
 ]);
 
-// ─── Tables ───────────────────────────────────────────────────────────────────
+// ─── Custom types ────────────────────────────────────────────────────────────────
+
+/**
+ * vector — pgvector custom type for 768-dimensional dense embeddings.
+ * Used for product semantic search (gemini-embedding-001).
+ * Nullable: products without an embedding have NULL (backfill is a future concern).
+ */
+const vector = customType<{ data: number[] }>({
+  dataType: () => 'vector(768)',
+});
+
+// ─── Tables ────────────────────────────────────────────────────────────────────
 
 /**
  * users — auth BC
@@ -79,6 +90,10 @@ export const products = pgTable(
     stock: integer('stock').default(0).notNull(),
     stockMin: integer('stock_min').notNull(),
     supplier: text('supplier').notNull(),
+    /** Product description — used in semantic search embedding text. */
+    description: text('description'),
+    /** Semantic search embedding — populated asynchronously after create/update. */
+    embedding: vector('embedding'),
     createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).defaultNow().notNull(),
   },

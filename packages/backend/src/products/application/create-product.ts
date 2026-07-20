@@ -17,6 +17,9 @@ import { SkuAlreadyExistsError } from '../domain/errors/sku-already-exists.js';
 import type { ProductRepository } from '../domain/ports/product-repository.js';
 import type { CategoryReadRepository } from '../domain/ports/category-repository.js';
 import type { AlertOpenerPort } from '../../alerts/domain/ports/alert-opener-port.js';
+import type { EmbeddingPort } from '../domain/ports/embedding.js';
+import type { Logger as PinoLogger } from 'pino';
+import { embedInBackground } from './embed-in-background.js';
 
 export interface CreateProductInput {
   sku: string;
@@ -33,6 +36,8 @@ export class CreateProductUseCase {
     private readonly products: ProductRepository,
     private readonly categories: CategoryReadRepository,
     private readonly alertOpener: AlertOpenerPort,
+    private readonly embedder?: EmbeddingPort,
+    private readonly logger?: PinoLogger,
   ) {}
 
   async execute(input: CreateProductInput): Promise<Product> {
@@ -86,6 +91,18 @@ export class CreateProductUseCase {
           e,
         );
       }
+    }
+
+    // Requirement 7: fire-and-forget embedding after product creation.
+    // setImmediate ensures embedding runs after the HTTP response is sent.
+    if (this.embedder) {
+      const product = Product.rehydrate(persisted);
+      const log = this.logger ?? {
+        warn: (_meta: object, _msg: string) => {
+          /* no-op when no logger injected */
+        },
+      };
+      setImmediate(() => embedInBackground(product, this.embedder!, this.products, log));
     }
 
     return Product.rehydrate(persisted);

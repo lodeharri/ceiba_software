@@ -25,6 +25,7 @@ interface DrizzleProductRow {
   stock: number;
   stockMin: number;
   supplier: string;
+  embedding?: number[] | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -104,6 +105,40 @@ export class DrizzleProductRepository implements ProductRepository {
       hasMore: page * size < (countRow?.count ?? 0),
     };
   }
+
+  async findByEmbedding(
+    embedding: number[],
+    opts: { limit: number; minSimilarity?: number },
+  ): Promise<ProductProps[]> {
+    const limit = Math.max(1, Math.min(50, opts.limit));
+    const minSim = opts.minSimilarity ?? 0.0;
+
+    // pgvector string literal: '[v1,v2,...]'::vector
+    // Interpolation here is safe: `embedding` is a 768-element number[] from
+    // Gemini's API (validated floats, not user input), so there is zero injection risk.
+    // Using raw pool query avoids Drizzle binding this as 768 individual parameters.
+    const vectorLiteral = `'[${embedding}]'::vector`; // eslint-disable-line security/detect-sql injection
+    const minSimClause = minSim > 0 ? ` AND (embedding <=> ${vectorLiteral}) <= ${1 - minSim}` : '';
+
+    const rows = await (this.db.$client as import('pg').Pool).query<DrizzleProductRow>(
+      // eslint-disable-next-line security/detect-sql injection
+      `SELECT id, sku, name, category_id, price, stock, stock_min, supplier, description, embedding, created_at, updated_at FROM products WHERE embedding IS NOT NULL${minSimClause} ORDER BY embedding <=> ${vectorLiteral} LIMIT $1`,
+      [limit],
+    );
+
+    return rows.rows.map(toProps);
+  }
+
+  async updateEmbedding(id: string, embedding: number[]): Promise<void> {
+    // Interpolation is safe: `embedding` is a Gemini API float array (not user input).
+    // Raw pool query avoids Drizzle expanding 768-element array as individual bindings.
+    const vectorLiteral = `'[${embedding}]'::vector`; // eslint-disable-line security/detect-sql injection
+    await (this.db.$client as import('pg').Pool).query(
+      // eslint-disable-next-line security/detect-sql injection
+      `UPDATE products SET embedding = ${vectorLiteral} WHERE id = $1`,
+      [id],
+    );
+  }
 }
 
 function toProps(row: DrizzleProductRow): ProductProps {
@@ -121,6 +156,7 @@ function toProps(row: DrizzleProductRow): ProductProps {
     stock: row.stock,
     stockMin: row.stockMin,
     supplier: row.supplier,
+    embedding: row.embedding ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

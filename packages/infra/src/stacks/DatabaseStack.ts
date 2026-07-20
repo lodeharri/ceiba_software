@@ -32,6 +32,7 @@ import * as rds from 'aws-cdk-lib/aws-rds';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { type Stage, infraConfig } from '../config.js';
+import { VectorExtension } from '../cdk/vector-extension-provider.js';
 // MigrationsCustomResource removed — migrations now run in GitHub Actions CI (migrate.yml).
 
 export interface DatabaseStackProps extends StackProps {
@@ -199,6 +200,15 @@ export class DatabaseStack extends Stack {
     // the operational runbook can find it.
     Tags.of(database).add('ExtensionVector', 'pgvector');
 
+    // ── Vector extension setup (pgvector) ────────────────────────────────────────────────
+    // Custom Resource Lambda runs in AWS default VPC (internet access) and connects
+    // to the publicly accessible RDS to CREATE EXTENSION vector.
+    new VectorExtension(this, 'VectorExtension', {
+      stage,
+      dbHost:
+        database.instanceEndpoint.socketAddress.split(':')[0] ?? database.instanceEndpoint.hostname,
+    });
+
     // Admin bootstrap password — migrated from SSM String to Secrets Manager
     // with KMS-backed encryption. No plaintext value in SSM, no runtime SDK call.
     // The SecretValue ref is passed directly into Lambda env vars at deploy time
@@ -288,6 +298,10 @@ export class DatabaseStack extends Stack {
         exportName: `MercadoExpress-${stage}-IsolatedSubnetId${i}`,
       });
     });
+
+    // SSM SecureString for Gemini API key — already exists in AWS as a SecureString.
+    // CDK does NOT manage this parameter to avoid type-update conflicts.
+    // The Lambda reads it via ssm:GetParameter with the existing IAM policy.
 
     // Migrations run in GitHub Actions CI (.github/workflows/migrate.yml).
     // No Custom Resource needed — removes the Lambda + provider from the stack.
