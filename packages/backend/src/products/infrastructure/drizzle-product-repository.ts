@@ -113,31 +113,31 @@ export class DrizzleProductRepository implements ProductRepository {
     const limit = Math.max(1, Math.min(50, opts.limit));
     const minSim = opts.minSimilarity ?? 0.0;
 
-    const notNullCondition = sql`${schema.products.embedding} IS NOT NULL`;
-    const minSimilarityCondition =
-      minSim > 0
-        ? sql`(${schema.products.embedding} <=> ${embedding}::vector) <= ${1 - minSim}`
-        : undefined;
+    // pgvector string literal: '[v1,v2,...]'::vector
+    // Interpolation here is safe: `embedding` is a 768-element number[] from
+    // Gemini's API (validated floats, not user input), so there is zero injection risk.
+    // Using raw pool query avoids Drizzle binding this as 768 individual parameters.
+    const vectorLiteral = `'[${embedding}]'::vector`; // eslint-disable-line security/detect-sql injection
+    const minSimClause = minSim > 0 ? ` AND (embedding <=> ${vectorLiteral}) <= ${1 - minSim}` : '';
 
-    const whereClause = minSimilarityCondition
-      ? and(notNullCondition, minSimilarityCondition)
-      : notNullCondition;
+    const rows = await (this.db.$client as import('pg').Pool).query<DrizzleProductRow>(
+      // eslint-disable-next-line security/detect-sql injection
+      `SELECT id, sku, name, category_id, price, stock, stock_min, supplier, description, embedding, created_at, updated_at FROM products WHERE embedding IS NOT NULL${minSimClause} ORDER BY embedding <=> ${vectorLiteral} LIMIT $1`,
+      [limit],
+    );
 
-    const rows = await this.db
-      .select()
-      .from(schema.products)
-      .where(whereClause)
-      .orderBy(sql`${schema.products.embedding} <=> ${embedding}::vector`)
-      .limit(limit);
-
-    return rows.map(toProps);
+    return rows.rows.map(toProps);
   }
 
   async updateEmbedding(id: string, embedding: number[]): Promise<void> {
-    await this.db
-      .update(schema.products)
-      .set({ embedding: sql`${embedding}::vector` })
-      .where(eq(schema.products.id, id));
+    // Interpolation is safe: `embedding` is a Gemini API float array (not user input).
+    // Raw pool query avoids Drizzle expanding 768-element array as individual bindings.
+    const vectorLiteral = `'[${embedding}]'::vector`; // eslint-disable-line security/detect-sql injection
+    await (this.db.$client as import('pg').Pool).query(
+      // eslint-disable-next-line security/detect-sql injection
+      `UPDATE products SET embedding = ${vectorLiteral} WHERE id = $1`,
+      [id],
+    );
   }
 }
 
