@@ -15,7 +15,7 @@
     "db:seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
-    "@asteasolutions/zod-to-openapi": "^7.1.1",
+    "@asteasolutions/zod-to-openapi": "^9.1.0",
     "@aws-sdk/client-ssm": "^3.1090.0",
     "@mercadoexpress/shared": "workspace:*",
     "@types/pg": "^8.20.0",
