@@ -318,6 +318,13 @@ export class ApiStack extends Stack {
         LOG_LEVEL: 'info',
         BCRYPT_COST: '10',
         EMBEDDING_PROVIDER: 'gemini',
+        // Set AWS_ENDPOINT_URL to a non-empty value so api-key-resolver.ts
+        // goes through the SSM path (IS_LOCAL = !AWS_ENDPOINT_URL).
+        // The Lambda execution role already has AmazonSSMReadOnlyAccess.
+        AWS_ENDPOINT_URL: 'https://ssm.us-east-1.amazonaws.com',
+        // ARN (not value) of the DB master credentials secret. The Lambda reads
+        // this at cold-start to retrieve the postgres password for CREATE EXTENSION.
+        DB_CREDS_SECRET_ARN: databaseUrlSecretArn,
       },
       ...(reservedConcurrency !== undefined
         ? { reservedConcurrentExecutions: reservedConcurrency }
@@ -345,11 +352,12 @@ export class ApiStack extends Stack {
       );
     }
 
-    // SSM GetParameter for Gemini API key (semantic search).
+    // SSM GetParameters for Gemini API key (semantic search).
+    // Uses GetParametersCommand (plural) in api-key-resolver.ts, requiring ssm:GetParameters.
     consolidatedFn.role!.addToPrincipalPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: ['ssm:GetParameter'],
+        actions: ['ssm:GetParameters'],
         resources: [
           `arn:aws:ssm:${Aws.REGION}:${Aws.ACCOUNT_ID}:parameter/ceiba/${stage}/gemini-api-key`,
         ],

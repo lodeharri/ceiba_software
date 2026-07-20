@@ -220,6 +220,9 @@ importers:
       '@aws-sdk/client-ssm':
         specifier: ^3.632.0
         version: 3.1084.0
+      '@types/pg':
+        specifier: ^8.20.0
+        version: 8.20.0
       aws-cdk-lib:
         specifier: ^2.155.0
         version: 2.261.0(constructs@10.6.0)
@@ -229,6 +232,9 @@ importers:
       dotenv:
         specifier: ^16.4.5
         version: 16.6.1
+      pg:
+        specifier: ^8.22.0
+        version: 8.22.0
     devDependencies:
       '@types/aws-lambda':
         specifier: ^8.10.162

@@ -28,9 +28,11 @@
   "dependencies": {
     "@aws-sdk/client-secrets-manager": "^3.632.0",
     "@aws-sdk/client-ssm": "^3.632.0",
+    "@types/pg": "^8.20.0",
     "aws-cdk-lib": "^2.155.0",
+    "constructs": "^10.4.0",
     "dotenv": "^16.4.5",
-    "constructs": "^10.4.0"
+    "pg": "^8.22.0"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.162",
