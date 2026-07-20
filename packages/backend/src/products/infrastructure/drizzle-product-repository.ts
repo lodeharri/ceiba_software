@@ -15,6 +15,7 @@ import type {
 } from '../domain/ports/product-repository.js';
 import * as schema from '../../db/schema.js';
 import { getDb } from '../../shared/db.js';
+import type { Pool as PgPool } from 'pg';
 
 interface DrizzleProductRow {
   id: string;
@@ -117,11 +118,10 @@ export class DrizzleProductRepository implements ProductRepository {
     // Interpolation here is safe: `embedding` is a 768-element number[] from
     // Gemini's API (validated floats, not user input), so there is zero injection risk.
     // Using raw pool query avoids Drizzle binding this as 768 individual parameters.
-    const vectorLiteral = `'[${embedding}]'::vector`; // eslint-disable-line security/detect-sql injection
+    const vectorLiteral = `'[${embedding}]'::vector`;
     const minSimClause = minSim > 0 ? ` AND (embedding <=> ${vectorLiteral}) <= ${1 - minSim}` : '';
 
-    const rows = await (this.db.$client as import('pg').Pool).query<DrizzleProductRow>(
-      // eslint-disable-next-line security/detect-sql injection
+    const rows = await (this.db.$client as PgPool).query<DrizzleProductRow>(
       `SELECT id, sku, name, category_id, price, stock, stock_min, supplier, description, embedding, created_at, updated_at FROM products WHERE embedding IS NOT NULL${minSimClause} ORDER BY embedding <=> ${vectorLiteral} LIMIT $1`,
       [limit],
     );
@@ -132,9 +132,8 @@ export class DrizzleProductRepository implements ProductRepository {
   async updateEmbedding(id: string, embedding: number[]): Promise<void> {
     // Interpolation is safe: `embedding` is a Gemini API float array (not user input).
     // Raw pool query avoids Drizzle expanding 768-element array as individual bindings.
-    const vectorLiteral = `'[${embedding}]'::vector`; // eslint-disable-line security/detect-sql injection
-    await (this.db.$client as import('pg').Pool).query(
-      // eslint-disable-next-line security/detect-sql injection
+    const vectorLiteral = `'[${embedding}]'::vector`;
+    await (this.db.$client as PgPool).query(
       `UPDATE products SET embedding = ${vectorLiteral} WHERE id = $1`,
       [id],
     );
